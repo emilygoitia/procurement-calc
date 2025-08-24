@@ -7,7 +7,7 @@ import numpy as np
 try:
     import plotly.express as px
 except ModuleNotFoundError:
-    st.error("Plotly isn’t installed on this deployment. Add `plotly==5.20.0` to requirements.txt (pinned) and Restart the app.")
+    st.error("Plotly isn’t installed on this deployment. Add `plotly==6.3.0` to requirements.txt (pinned) and Restart the app.")
     st.stop()
 
 # ======================= Branding =======================
