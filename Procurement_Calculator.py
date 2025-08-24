@@ -42,7 +42,7 @@ section[data-testid="stSidebar"] > div {{ background: white; border-right: 4px s
 </style>
 """
 
-st.set_page_config(page_title="Mano Procurement Calculator — v3", layout="wide")
+st.set_page_config(page_title="Mano Procurement Calculator", layout="wide")
 st.markdown(BRAND_CSS, unsafe_allow_html=True)
 
 # ======================= Defaults / Constants =======================
@@ -160,7 +160,7 @@ def compute_pass(row: pd.Series, mode: str, holidays: set | None = None) -> dict
         }
 
 # ======================= UI =======================
-st.title("Procurement Forward/Backward Pass Calculator")
+st.title("Mano Procurement Calculator")
 
 with st.sidebar:
     st.subheader("Settings")
