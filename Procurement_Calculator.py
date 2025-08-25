@@ -1,4 +1,5 @@
-# Procurement_Calculator.py — v7.3 (restore results table with slack column)
+
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -29,21 +30,37 @@ html, body, [class*="css"]  {{ font-family: 'Raleway', sans-serif; }}
 h1, h2, h3, h4, h5, h6 {{ color: var(--mano-grey); font-weight: 600; }}
 .block-container {{ padding-top: 1.0rem; }}
 section[data-testid="stSidebar"] > div {{ background: white; border-right: 4px solid var(--mano-blue); }}
-.stButton>button, .stDownloadButton>button {{
-  background: var(--mano-blue); color: white; border: 0; border-radius: 12px; padding: .5rem 1rem;
+
+/* Buttons (including form submit) — Mano Blue */
+.stButton>button, .stDownloadButton>button, .stForm form button[kind="primary"] {{
+  background: var(--mano-blue) !important; color: white !important; border: 0 !important;
+  border-radius: 12px !important; padding: .5rem 1rem !important;
 }}
+.stButton>button:hover, .stDownloadButton>button:hover, .stForm form button[kind="primary"]:hover {{
+  filter: brightness(0.95);
+}}
+
 .dataframe tbody tr:nth-child(even) {{ background: rgba(27,106,135,0.05); }}
-/* Mano-blue focus outline on editable cells */
+
+/* Mano-blue focus + invalid outlines (override any red) */
+.stDataFrame [data-testid="stDataFrameCell"],
+.stDataFrame [data-testid="stDataFrameCell"] * {{
+  caret-color: {MANO_BLUE} !important;
+}}
 .stDataFrame [data-testid="stDataFrameCell"]:focus,
 .stDataFrame [data-testid="stDataFrameCell"]:focus-within,
 .stDataFrame [data-testid="stDataFrameCell"] input:focus,
-.stDataFrame [data-testid="stDataFrameCell"] select:focus {{
-  outline: 2px solid {MANO_BLUE} !important;
-  box-shadow: 0 0 0 1px {MANO_BLUE} !important;
-}}
+.stDataFrame [data-testid="stDataFrameCell"] select:focus,
 input:focus, select:focus, textarea:focus {{
   outline: 2px solid {MANO_BLUE} !important;
   box-shadow: 0 0 0 1px {MANO_BLUE} !important;
+  border-color: {MANO_BLUE} !important;
+}}
+.stDataFrame [data-testid="stDataFrameCell"] input[aria-invalid="true"],
+.stDataFrame [data-testid="stDataFrameCell"] select[aria-invalid="true"] {{
+  outline: 2px solid {MANO_BLUE} !important;
+  box-shadow: 0 0 0 1px {MANO_BLUE} !important;
+  border-color: {MANO_BLUE} !important;
 }}
 .small-muted {{ color: #5c6b73; font-size: 0.875rem; }}
 </style>
@@ -92,57 +109,29 @@ def as_int(x, default=0):
         return default
 
 def bday_add(start, days, holidays=None):
- # codex/find-and-fix-an-important-bug
-    """Add business days to a date allowing non-biz start dates.
-
-    numpy.busday_offset raises an error when ``start`` falls on a weekend or
-    holiday unless a ``roll`` policy is provided.  Users of the app may enter
-    such dates (e.g. PO executed on a Saturday) which previously caused the
-    app to crash.  Rolling forward ensures the calculation proceeds from the
-    next valid business day.
-    """
-    if pd.isna(start) or days is None:
-        return pd.NaT
-    return pd.to_datetime(
-        np.busday_offset(
-            np.datetime64(pd.to_datetime(start).date()),
-            days,
-            holidays=sorted(list(holidays or set())),
-            roll="forward",
-        )
-    )
+    if pd.isna(start) or days is None: return pd.NaT
+    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(start).date()),
+                                           int(days), holidays=sorted(list(holidays or set())), roll="forward"))
 
 def bday_sub(end, days, holidays=None):
-    """Subtract business days from a date allowing non-biz end dates.
-
-    ``roll='backward'`` lets numpy handle weekend/holiday end dates gracefully
-    by moving to the previous business day before subtracting the offset.
-    """
-    if pd.isna(end) or days is None:
-        return pd.NaT
-    return pd.to_datetime(
-        np.busday_offset(
-            np.datetime64(pd.to_datetime(end).date()),
-            -days,
-            holidays=sorted(list(holidays or set())),
-            roll="backward",
-        )
-    )
-
+    if pd.isna(end) or days is None: return pd.NaT
+    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(end).date()),
+                                           -int(days), holidays=sorted(list(holidays or set())), roll="backward"))
 
 def bday_diff(d1, d2, holidays):
-    if pd.isna(d1) or pd.isna(d2):
-        return None
+    if pd.isna(d1) or pd.isna(d2): return None
     return int(np.busday_count(np.datetime64(pd.to_datetime(d1).date()),
                                np.datetime64(pd.to_datetime(d2).date()),
                                holidays=sorted(list(holidays or set()))))
 
-def compute_pass(row, mode, holidays=None):
-    sub  = as_int(row.get("Submittal (days)", DEFAULT_SUBMITTAL_DAYS), DEFAULT_SUBMITTAL_DAYS)
-    mfg  = as_int(row.get("Manufacturing (days)", 0), 0)
-    ship = as_int(row.get("Shipping (days)",  DEFAULT_SHIPPING_DAYS),  DEFAULT_SHIPPING_DAYS)
-    buf  = as_int(row.get("Buffer (days)",    DEFAULT_BUFFER_DAYS),    DEFAULT_BUFFER_DAYS)
-    po, roj = pd.to_datetime(row.get("PO Execution"), errors="coerce"), pd.to_datetime(row.get("ROJ"), errors="coerce")
+def compute_pass(row, mode, holidays):
+    """Forward/backward engine using business-day math."""
+    sub  = as_int(row.get("Submittal (days)"), DEFAULT_SUBMITTAL_DAYS)
+    mfg  = as_int(row.get("Manufacturing (days)"), 0)
+    ship = as_int(row.get("Shipping (days)"),  DEFAULT_SHIPPING_DAYS)
+    buf  = as_int(row.get("Buffer (days)"),    DEFAULT_BUFFER_DAYS)
+    po   = pd.to_datetime(row.get("PO Execution"), errors="coerce")
+    roj  = pd.to_datetime(row.get("ROJ"), errors="coerce")
 
     if mode == "Forward":
         if pd.isna(po): return {}
@@ -150,28 +139,166 @@ def compute_pass(row, mode, holidays=None):
         mfg_end = bday_add(sub_end, mfg, holidays)
         ship_end = bday_add(mfg_end, ship, holidays)
         roj_calc = bday_add(ship_end, buf, holidays)
-        return {
-            "PO Execution": po,
-            "Submittal Start": po, "Submittal End": sub_end,
-            "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
-            "Shipping Start": mfg_end, "Shipping End": ship_end,
-            "Buffer Start": ship_end, "ROJ": roj_calc, "Buffer End": roj_calc,
-        }
-    elif mode == "Backward":
+        return {"PO Execution": po,
+                "Submittal Start": po, "Submittal End": sub_end,
+                "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
+                "Shipping Start": mfg_end, "Shipping End": ship_end,
+                "Buffer Start": ship_end, "ROJ_calc": roj_calc, "Buffer End": roj_calc}
+    if mode == "Backward":
         if pd.isna(roj): return {}
         ship_end = bday_sub(roj, buf, holidays)
         mfg_end  = bday_sub(ship_end, ship, holidays)
         sub_end  = bday_sub(mfg_end, mfg, holidays)
         po_calc  = bday_sub(sub_end, sub, holidays)
-        return {
-            "PO Execution": po_calc,
-            "Submittal Start": po_calc, "Submittal End": sub_end,
-            "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
-            "Shipping Start": mfg_end, "Shipping End": ship_end,
-            "Buffer Start": ship_end, "ROJ": roj, "Buffer End": roj,
+        # Cap calculated required PO at today (don’t say it was needed earlier than today)
+        if pd.notna(po_calc) and po_calc < TODAY:
+            po_calc = TODAY
+        return {"PO Execution": po_calc,
+                "Submittal Start": po_calc, "Submittal End": sub_end,
+                "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
+                "Shipping Start": mfg_end, "Shipping End": ship_end,
+                "Buffer Start": ship_end, "ROJ_calc": roj, "Buffer End": roj}
+    return {}
+
+def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
+    """Compute result rows from editor data. Requires holiday_set."""
+    recs = []
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # Soft coercions
+    calc = df.copy()
+    for c in ["ROJ","PO Execution","Delivery Date (committed)"]:
+        calc[c] = pd.to_datetime(calc.get(c), errors="coerce")
+    for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
+        calc[c] = pd.to_numeric(calc.get(c), errors="coerce")
+
+    for _, row in calc.iterrows():
+        mode = str(row.get("Mode","") or "")
+        if mode not in ("Forward","Backward"):
+            continue
+
+        committed_delivery = row.get("Delivery Date (committed)")
+        po = row.get("PO Execution")
+        sub = as_int(row.get("Submittal (days)"), DEFAULT_SUBMITTAL_DAYS)
+        mfg = row.get("Manufacturing (days)")
+        ship = as_int(row.get("Shipping (days)"), DEFAULT_SHIPPING_DAYS)
+        buf = as_int(row.get("Buffer (days)"), DEFAULT_BUFFER_DAYS)
+
+        # If committed delivery provided and mfg blank, derive Manufacturing (days) (Forward logic)
+        if mode == "Forward" and pd.notna(committed_delivery) and (pd.isna(mfg) or mfg == "") and pd.notna(po):
+            mfg_end = bday_sub(committed_delivery, buf, holiday_set)
+            mfg_end = bday_sub(mfg_end, ship, holiday_set)
+            sub_end = bday_add(po, sub, holiday_set)
+            if pd.notna(sub_end) and pd.notna(mfg_end):
+                mfg_dur = bday_diff(sub_end, mfg_end, holiday_set)
+                if mfg_dur is not None and mfg_dur < 0:
+                    mfg_dur = 0
+                row["Manufacturing (days)"] = mfg_dur
+
+        # Guard: Forward needs PO
+        if mode == "Forward" and pd.isna(po):
+            recs.append({
+                "Equipment": row.get("Equipment",""),
+                "Mode": mode,
+                "ROJ": row.get("ROJ"),  # user ROJ only (no computed)
+                "PO Execution": None,
+                "Submittal (days)": sub, "Submittal Start": None, "Submittal End": None,
+                "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
+                "Manufacturing Start": None, "Manufacturing End": None,
+                "Shipping (days)": ship, "Shipping Start": None, "Shipping End": None,
+                "Buffer (days)": buf, "Buffer Start": None,
+                "Status": "ℹ️ PO missing; cannot compute forward.",
+                "Float (days)": None,
+                "Delta to ROJ (days)": None,
+                "Delivery Date (committed)": committed_delivery,
+                "Delivery Date": None,
+            })
+            continue
+
+        res = compute_pass(row, mode, holiday_set)
+        if not res:
+            # e.g., Backward without ROJ
+            recs.append({
+                "Equipment": row.get("Equipment",""),
+                "Mode": mode,
+                "ROJ": row.get("ROJ"),
+                "PO Execution": row.get("PO Execution"),
+                "Submittal (days)": sub,
+                "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
+                "Shipping (days)": ship,
+                "Buffer (days)": buf,
+                "Status": "ℹ️ Missing inputs for calculation.",
+                "Float (days)": None,
+                "Delta to ROJ (days)": None,
+                "Delivery Date (committed)": committed_delivery,
+                "Delivery Date": None,
+            })
+            continue
+
+        # Delivery Date (final): committed overrides; else end of Buffer (or end of Shipping when Buffer=0)
+        ship_end = res.get("Shipping End")
+        buffer_end = res.get("Buffer End")
+        computed_delivery = buffer_end if buf > 0 else ship_end
+        final_delivery = committed_delivery if pd.notna(committed_delivery) else computed_delivery
+
+        # ROJ column in results: only user-entered (no computed ROJ)
+        roj_user = row.get("ROJ")
+
+        # Delta to ROJ (days): compare user ROJ vs final delivery, if both present
+        delta = None
+        status = ""
+        if pd.notna(roj_user) and pd.notna(final_delivery):
+            delta = bday_diff(roj_user, final_delivery, holiday_set)
+            if delta is not None and delta > 0:
+                status = "⛔ Late vs ROJ"
+            elif delta is not None and delta <= 0:
+                status = "✓ Meets/early vs ROJ"
+
+        # Float (Backward): business days from today to required PO date (capped in compute_pass)
+        flt = None
+        if mode == "Backward":
+            po_req = res.get("PO Execution")
+            if pd.notna(po_req):
+                # po_req already >= TODAY due to cap above
+                flt = bday_diff(TODAY, po_req, holiday_set)
+
+        d = {
+            "Equipment": row.get("Equipment",""),
+            "Mode": mode,
+            "ROJ": roj_user,                             # user-entered only
+            "PO Execution": res.get("PO Execution"),     # computed or user
+            "Submittal (days)": sub,
+            "Submittal Start": res.get("Submittal Start"), "Submittal End": res.get("Submittal End"),
+            "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
+            "Manufacturing Start": res.get("Manufacturing Start"), "Manufacturing End": res.get("Manufacturing End"),
+            "Shipping (days)": ship,
+            "Shipping Start": res.get("Shipping Start"), "Shipping End": res.get("Shipping End"),
+            "Buffer (days)": buf, "Buffer Start": res.get("Buffer Start"),
+            "Status": status if status else None,
+            "Float (days)": flt,
+            "Delta to ROJ (days)": delta,
+            "Delivery Date (committed)": committed_delivery,
+            "Delivery Date": final_delivery,             # final for results
         }
-    else:
-        return {}
+        recs.append(d)
+
+    if not recs:
+        return pd.DataFrame()
+
+    out = pd.DataFrame(recs)
+    # Results column order (ROJ kept, Delivery columns at the end)
+    table_cols = [
+        "Equipment","Mode","ROJ","PO Execution",
+        "Submittal (days)","Submittal Start","Submittal End",
+        "Manufacturing (days)","Manufacturing Start","Manufacturing End",
+        "Shipping (days)","Shipping Start","Shipping End",
+        "Buffer (days)","Buffer Start",
+        "Status","Float (days)","Delta to ROJ (days)",
+        "Delivery Date (committed)","Delivery Date",
+    ]
+    existing = [c for c in table_cols if c in out.columns]
+    return out[existing]
 
 # ================= Title & Notes =================
 st.title("Procurement Calculator")
@@ -180,17 +307,15 @@ st.markdown(
     """
 <div class="small-muted">
 <b>Assumptions:</b> Business-day math (Mon–Fri). Choose a single holiday preset.<br>
-<b>Per-row Mode:</b> Forward = compute ROJ from PO. Backward = compute PO from ROJ.<br>
-<b>Float:</b> Negative means past-due. Positive means available buffer.<br>
+<b>Per-row Mode:</b> Forward = compute from PO; Backward = compute PO from ROJ.<br>
+<b>Delivery Date (committed):</b> Only enter if a vendor has committed; if so, leave <i>Manufacturing (days)</i> blank and we’ll derive it.<br>
+<b>PO Execution:</b> If calculated (Backward) and it lands before today, we cap it at today. Manually-entered past dates are allowed in Forward mode.<br>
 </div>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # ================= Sidebar: Holiday presets =================
 with st.sidebar:
     st.subheader("Holiday Calendar")
-
     def build_calendar(name: str):
         if name == "US Federal":
             try:
@@ -227,53 +352,72 @@ with st.sidebar:
                 "2026-01-01","2026-02-02","2026-03-16","2026-05-01","2026-09-16","2026-11-16","2026-12-25",
             ]).date)
         return set()
-
-    calendar_choice = st.selectbox(
-        "Preset",
-        ["None","US Federal","Spain (C. Valenciana)","Netherlands","Italy","UK (England & Wales)","Mexico"]
-    )
+    calendar_choice = st.selectbox("Preset", ["None","US Federal","Spain (C. Valenciana)","Netherlands","Italy","UK (England & Wales)","Mexico"])
     holiday_set = build_calendar(calendar_choice)
 
-# ================= Initialize / Buttons =================
+# ================= Session init =================
 def make_default_df():
     df = pd.DataFrame(STANDARD_EQUIPMENT)
     df["Mode"] = ""
     df["ROJ"] = pd.NaT
     df["PO Execution"] = pd.NaT
     df["Submittal (days)"] = DEFAULT_SUBMITTAL_DAYS
+    df["Manufacturing (days)"] = 0
     df["Shipping (days)"]  = DEFAULT_SHIPPING_DAYS
     df["Buffer (days)"]    = DEFAULT_BUFFER_DAYS
+    df["Delivery Date (committed)"] = pd.NaT
     return df
 
 if "work_df" not in st.session_state or st.session_state.work_df is None:
     st.session_state.work_df = make_default_df()
+if "results" not in st.session_state:
+    st.session_state.results = pd.DataFrame()
+# Editor refresh nonce (force grid rebuild on clear/reset)
+if "editor_nonce" not in st.session_state:
+    st.session_state.editor_nonce = 0
 
-col1, col2 = st.columns([1,1], gap="small")
-with col1:
+# ================= Buttons =================
+c1, c2, _ = st.columns([1,1,2], gap="small")
+with c1:
     if st.button("Clear All Inputs"):
         df = st.session_state.work_df.copy()
-        if "Mode" in df: df["Mode"] = ""
-        for c in ["ROJ","PO Execution"]:
-            if c in df: df[c] = pd.NaT
-        if "Submittal (days)" in df: df["Submittal (days)"] = DEFAULT_SUBMITTAL_DAYS
-        if "Shipping (days)"  in df: df["Shipping (days)"]  = DEFAULT_SHIPPING_DAYS
-        if "Buffer (days)"    in df: df["Buffer (days)"]    = DEFAULT_BUFFER_DAYS
+        for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
+            if c == "Mode" and c in df: df[c] = ""
+            elif c in df: df[c] = pd.NaT
+        for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
+            if c in df:
+                if c == "Manufacturing (days)":
+                    df[c] = 0
+                elif c == "Submittal (days)":
+                    df[c] = DEFAULT_SUBMITTAL_DAYS
+                elif c == "Shipping (days)":
+                    df[c] = DEFAULT_SHIPPING_DAYS
+                elif c == "Buffer (days)":
+                    df[c] = DEFAULT_BUFFER_DAYS
         st.session_state.work_df = df
-with col2:
+        st.session_state.results = pd.DataFrame()   # clear output
+        st.session_state.editor_nonce += 1          # force editor refresh
+with c2:
     if st.button("Reset Default Equipment"):
         st.session_state.work_df = make_default_df()
+        st.session_state.results = pd.DataFrame()
+        st.session_state.editor_nonce += 1
 
-# ================= Data & Editor (stable) =================
+# ================= Data Editor (FORM; Calculate-only) =================
+st.markdown("### Equipment & Durations")
+st.caption("Only fill **Delivery Date (committed)** if a vendor has provided a firm date. If so, leave **Manufacturing (days)** blank and we’ll derive it.")
+
 editor_cols = [
     "Equipment","Mode","ROJ","PO Execution",
-    "Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"
+    "Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)",
+    "Delivery Date (committed)"  # LAST
 ]
-# Ensure required columns exist; DO NOT coerce values
+# Ensure columns exist with defaults
 for c in editor_cols:
     if c not in st.session_state.work_df.columns:
         if c in ("Equipment","Mode"):
             st.session_state.work_df[c] = ""
-        elif c in ("ROJ","PO Execution"):
+        elif c in ("ROJ","PO Execution","Delivery Date (committed)"):
             st.session_state.work_df[c] = pd.NaT
         elif c == "Manufacturing (days)":
             st.session_state.work_df[c] = 0
@@ -284,113 +428,40 @@ for c in editor_cols:
         elif c == "Buffer (days)":
             st.session_state.work_df[c] = DEFAULT_BUFFER_DAYS
 
-# Ensure date dtypes are datetime64[ns] so DateColumn won’t “blink” on first pick
-for c in ["ROJ","PO Execution"]:
-    if str(st.session_state.work_df[c].dtype) != "datetime64[ns]":
-        st.session_state.work_df[c] = pd.to_datetime(st.session_state.work_df[c], errors="coerce")
+with st.form("grid_form", clear_on_submit=False):
+    edited_df = st.data_editor(
+        st.session_state.work_df[editor_cols],
+        key=f"equipment_editor_{st.session_state.editor_nonce}",
+        num_rows="dynamic",
+        use_container_width=True,
+        hide_index=True,
+        column_order=editor_cols,
+        column_config={
+            "Mode": st.column_config.SelectboxColumn("Mode", options=["","Forward","Backward"]),
+            "ROJ": st.column_config.DateColumn("ROJ"),
+            "PO Execution": st.column_config.DateColumn("PO Execution"),
+            "Submittal (days)":     st.column_config.NumberColumn(min_value=0, step=1),
+            "Manufacturing (days)": st.column_config.NumberColumn(min_value=0, step=1),
+            "Shipping (days)":      st.column_config.NumberColumn(min_value=0, step=1),
+            "Buffer (days)":        st.column_config.NumberColumn(min_value=0, step=1),
+            "Delivery Date (committed)": st.column_config.DateColumn("Delivery Date (committed)"),
+        },
+    )
+    calc_clicked = st.form_submit_button("Calculate", type="primary")
 
-st.markdown("### Equipment & Durations")
-
-# IMPORTANT: pass the WHOLE DF to the editor (no slicing), and use a stable key
-edited_df = st.data_editor(
-    st.session_state.work_df,
-    key="equipment_editor",                      # stabilizes widget identity across reruns
-    num_rows="dynamic",
-    use_container_width=True,
-    hide_index=True,
-    column_order=editor_cols,                    # show these columns in this order
-    column_config={
-        "Mode": st.column_config.SelectboxColumn("Mode", options=["","Forward","Backward"]),
-        "ROJ": st.column_config.DateColumn("ROJ"),
-        "PO Execution": st.column_config.DateColumn("PO Execution"),
-        "Submittal (days)":     st.column_config.NumberColumn(min_value=0, step=1),
-        "Manufacturing (days)": st.column_config.NumberColumn(min_value=0, step=1),
-        "Shipping (days)":      st.column_config.NumberColumn(min_value=0, step=1),
-        "Buffer (days)":        st.column_config.NumberColumn(min_value=0, step=1),
-    },
-)
-
-# Persist editor output only when it differs from the stored value. Copying
-# breaks references so subsequent edits are detected immediately and saved on
-# the first try.
-if not edited_df.equals(st.session_state.work_df):
+# On Calculate: persist edits and compute
+if calc_clicked:
     st.session_state.work_df = edited_df.copy()
-
-# ================= Compute =================
-def compute_all(df: pd.DataFrame) -> pd.DataFrame:
-    recs = []
-    if df is None or df.empty:
-        return pd.DataFrame()
-
-    # Compute on a copy with soft coercion (not the editor DF)
-    calc = df.copy()
-    calc["ROJ"] = pd.to_datetime(calc.get("ROJ"), errors="coerce")
-    calc["PO Execution"] = pd.to_datetime(calc.get("PO Execution"), errors="coerce")
-    for col in ["Submittal (days)", "Manufacturing (days)", "Shipping (days)", "Buffer (days)"]:
-        calc[col] = pd.to_numeric(calc.get(col), errors="coerce")
-
-    for _, row in calc.iterrows():
-        mode = row.get("Mode", "")
-        if pd.isna(mode) or str(mode) not in ("Forward", "Backward"):
-            continue
-        res = compute_pass(row, str(mode), holidays=holiday_set)
-        if not res:
-            continue
-
-        status = ""
-        slack = None
-        delta = None
-        if mode == "Backward":
-            po_req = res.get("PO Execution")
-            if pd.notna(po_req) and po_req < TODAY:
-                status = "⚠️ Past‑due PO"
-                s = bday_diff(po_req, TODAY, holiday_set)
-                slack = -abs(s) if s is not None else None
-        else:
-            roj_calc = res.get("ROJ")
-            roj_target = row.get("ROJ")
-            if pd.notna(roj_calc) and pd.notna(roj_target) and roj_calc > roj_target:
-                status = "⛔ Not achievable"
-                delta = bday_diff(roj_target, roj_calc, holiday_set)
-
-        d = {"Equipment": row.get("Equipment", ""), "Mode": str(mode)}
-        d.update(res)
-        d.update({
-            "Submittal (days)":     as_int(row.get("Submittal (days)"), DEFAULT_SUBMITTAL_DAYS),
-            "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
-            "Shipping (days)":      as_int(row.get("Shipping (days)"), DEFAULT_SHIPPING_DAYS),
-            "Buffer (days)":        as_int(row.get("Buffer (days)"), DEFAULT_BUFFER_DAYS),
-            "Status": status,
-            "Slack (days)": slack,
-            "Delta to Target ROJ (days)": delta,
-        })
-        recs.append(d)
-
-    if not recs:
-        return pd.DataFrame()
-
-    out = pd.DataFrame(recs)
-    table_cols = [
-        "Equipment", "Mode", "ROJ", "PO Execution",
-        "Submittal (days)", "Submittal Start", "Submittal End",
-        "Manufacturing (days)", "Manufacturing Start", "Manufacturing End",
-        "Shipping (days)", "Shipping Start", "Shipping End",
-        "Buffer (days)", "Buffer Start",
-        "Status", "Slack (days)", "Delta to Target ROJ (days)",
-    ]
-    existing = [c for c in table_cols if c in out.columns]
-    return out[existing]
-
-results = compute_all(st.session_state.work_df)
+    st.session_state.results = compute_all(st.session_state.work_df, holiday_set)
 
 # ================= Output: Table =================
 st.markdown("### Calculated Dates")
-if results.empty:
-    st.info("Choose Mode per row and enter either ROJ (Backward) or PO Execution (Forward).")
+if st.session_state.results is None or st.session_state.results.empty:
+    st.info("Fill the table, then click **Calculate**.")
 else:
-    show = results.copy()
+    show = st.session_state.results.copy()
     for c in show.columns:
-        if "Start" in c or "End" in c or c in {"PO Execution","ROJ"}:
+        if "Start" in c or "End" in c or c in {"PO Execution","ROJ","Delivery Date (committed)","Delivery Date"}:
             show[c] = pd.to_datetime(show[c]).dt.date
     st.dataframe(show, use_container_width=True, hide_index=True)
     csv = show.to_csv(index=False).encode("utf-8")
@@ -398,32 +469,52 @@ else:
 
 # ================= Output: Gantt =================
 st.markdown("### Timeline (per Equipment)")
-if not results.empty:
+res = st.session_state.results
+if res is not None and not res.empty:
     bars = []
-    phase_order = [
-        ("Submittal",     "Submittal Start",     "Submittal End"),
-        ("Manufacturing", "Manufacturing Start", "Manufacturing End"),
-        ("Shipping",      "Shipping Start",      "Shipping End"),
-        ("Buffer",        "Buffer Start",        "ROJ"),
-    ]
-    for _, r in results.iterrows():
-        for phase, s_col, e_col in phase_order:
-            s, e = r.get(s_col), r.get(e_col)
-            if pd.isna(s) or pd.isna(e):
+    # Primary phase bars
+    phases = [("Submittal","Submittal Start","Submittal End"),
+              ("Manufacturing","Manufacturing Start","Manufacturing End"),
+              ("Shipping","Shipping Start","Shipping End"),
+              ("Buffer","Buffer Start","Delivery Date")]  # use final Delivery for Buffer end marker
+    for _, r in res.iterrows():
+        has_any = False
+        for p, s, e in phases:
+            s_val, e_val = r.get(s), r.get(e)
+            if pd.isna(s_val) or pd.isna(e_val):
                 continue
-            bars.append({"Equipment": r["Equipment"], "Phase": phase,
-                         "Start": pd.to_datetime(s), "Finish": pd.to_datetime(e)})
+            has_any = True
+            bars.append({"Equipment": r["Equipment"], "Phase": p,
+                         "Start": pd.to_datetime(s_val), "Finish": pd.to_datetime(e_val)})
+        # If no full phases, add a 1-day milestone so the equipment appears
+        if not has_any:
+            # Prefer Delivery, then ROJ, then PO
+            milestone = r.get("Delivery Date") or r.get("ROJ") or r.get("PO Execution")
+            if pd.notna(milestone):
+                start = pd.to_datetime(milestone)
+                finish = start  # 1-day marker will render as a thin bar
+                bars.append({"Equipment": r["Equipment"], "Phase": "Milestone",
+                             "Start": start, "Finish": finish})
+
     if bars:
         gantt_df = pd.DataFrame(bars)
-        color_map = {"Submittal": MANO_BLUE, "Manufacturing": "#DECADE", "Shipping": "#F6AE2D", "Buffer": "#F34213"}
+        color_map = {
+            "Submittal": MANO_BLUE,
+            "Manufacturing": "#DECADE",
+            "Shipping": "#F6AE2D",
+            "Buffer": "#F34213",
+            "Milestone": MANO_BLUE,
+        }
         fig = px.timeline(
             gantt_df, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
-            category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer"]},
+            category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer","Milestone"]},
             color_discrete_map=color_map,
         )
         fig.update_yaxes(autorange="reversed")
         fig.update_layout(height=520, margin=dict(l=20, r=20, t=20, b=20))
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("No timeline bars yet — enter dates to calculate first.")
+        st.info("No timeline bars yet — click **Calculate** first.")
+
+
 
