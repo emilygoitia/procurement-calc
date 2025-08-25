@@ -120,21 +120,7 @@ def bday_sub(end, days, holidays=None):
             roll="backward",
         )
     )
-""" # =======
-    if pd.isna(start) or days is None:
-        return pd.NaT
-    return pd.to_datetime(
-      np.busday_offset(
-        np.datetime64(pd.to_datetime(start).date()), 
-        int(days),                                   
-        holidays=sorted(list(holidays or set())))),
 
-def bday_sub(end, days, holidays=None):
-    if pd.isna(end) or days is None:
-        return pd.NaT
-    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(end).date()), -int(days),
-                                           holidays=sorted(list(holidays or set()))))
-""" # main
 
 def bday_diff(d1, d2, holidays):
     if pd.isna(d1) or pd.isna(d2):
