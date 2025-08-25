@@ -1,4 +1,4 @@
-# Procurement_Calculator.py — v6.1
+# Procurement_Calculator.py — v7.1 (stable editor: no first-entry clearing)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,9 +12,9 @@ except ModuleNotFoundError:
     st.stop()
 
 # ================= Branding =================
-MANO_BLUE = "#1b6a87"
+MANO_BLUE     = "#1b6a87"
 MANO_OFFWHITE = "#f4f6f6"
-MANO_GREY = "#24333b"
+MANO_GREY     = "#24333b"
 
 BRAND_CSS = f"""
 <style>
@@ -43,10 +43,10 @@ section[data-testid="stSidebar"] > div {{ background: white; border-right: 4px s
 st.set_page_config(page_title="Procurement Calculator", layout="wide")
 st.markdown(BRAND_CSS, unsafe_allow_html=True)
 
-# ============ Defaults & Equipment ============
+# ================= Defaults / Constants =================
 DEFAULT_SUBMITTAL_DAYS = 15
-DEFAULT_SHIPPING_DAYS = 15
-DEFAULT_BUFFER_DAYS = 20
+DEFAULT_SHIPPING_DAYS  = 15
+DEFAULT_BUFFER_DAYS    = 20
 TODAY = pd.to_datetime(date.today())
 
 STANDARD_EQUIPMENT = [
@@ -74,7 +74,7 @@ STANDARD_EQUIPMENT = [
     {"Equipment": "Uninterruptible Power Supply (House)", "Manufacturing (days)": 0},
 ]
 
-# ============ Helpers ============
+# ================= Helpers =================
 def as_int(x, default=0):
     try:
         if pd.isna(x) or x == "":
@@ -84,17 +84,20 @@ def as_int(x, default=0):
         return default
 
 def bday_add(start, days, holidays=None):
-    if pd.isna(start) or days is None: return pd.NaT
-    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(start).date()), days,
+    if pd.isna(start) or days is None:
+        return pd.NaT
+    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(start).date()), int(days),
                                            holidays=sorted(list(holidays or set()))))
 
 def bday_sub(end, days, holidays=None):
-    if pd.isna(end) or days is None: return pd.NaT
-    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(end).date()), -days,
+    if pd.isna(end) or days is None:
+        return pd.NaT
+    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(end).date()), -int(days),
                                            holidays=sorted(list(holidays or set()))))
 
 def bday_diff(d1, d2, holidays):
-    if pd.isna(d1) or pd.isna(d2): return None
+    if pd.isna(d1) or pd.isna(d2):
+        return None
     return int(np.busday_count(np.datetime64(pd.to_datetime(d1).date()),
                                np.datetime64(pd.to_datetime(d2).date()),
                                holidays=sorted(list(holidays or set()))))
@@ -104,7 +107,7 @@ def compute_pass(row, mode, holidays=None):
     mfg  = as_int(row.get("Manufacturing (days)", 0), 0)
     ship = as_int(row.get("Shipping (days)",  DEFAULT_SHIPPING_DAYS),  DEFAULT_SHIPPING_DAYS)
     buf  = as_int(row.get("Buffer (days)",    DEFAULT_BUFFER_DAYS),    DEFAULT_BUFFER_DAYS)
-    po, roj = pd.to_datetime(row.get("PO Execution")), pd.to_datetime(row.get("ROJ"))
+    po, roj = pd.to_datetime(row.get("PO Execution"), errors="coerce"), pd.to_datetime(row.get("ROJ"), errors="coerce")
 
     if mode == "Forward":
         if pd.isna(po): return {}
@@ -112,24 +115,30 @@ def compute_pass(row, mode, holidays=None):
         mfg_end = bday_add(sub_end, mfg, holidays)
         ship_end = bday_add(mfg_end, ship, holidays)
         roj_calc = bday_add(ship_end, buf, holidays)
-        return {"PO Execution": po, "Submittal Start": po, "Submittal End": sub_end,
-                "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
-                "Shipping Start": mfg_end, "Shipping End": ship_end,
-                "Buffer Start": ship_end, "ROJ": roj_calc, "Buffer End": roj_calc}
+        return {
+            "PO Execution": po,
+            "Submittal Start": po, "Submittal End": sub_end,
+            "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
+            "Shipping Start": mfg_end, "Shipping End": ship_end,
+            "Buffer Start": ship_end, "ROJ": roj_calc, "Buffer End": roj_calc,
+        }
     elif mode == "Backward":
         if pd.isna(roj): return {}
         ship_end = bday_sub(roj, buf, holidays)
         mfg_end  = bday_sub(ship_end, ship, holidays)
         sub_end  = bday_sub(mfg_end, mfg, holidays)
         po_calc  = bday_sub(sub_end, sub, holidays)
-        return {"PO Execution": po_calc, "Submittal Start": po_calc, "Submittal End": sub_end,
-                "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
-                "Shipping Start": mfg_end, "Shipping End": ship_end,
-                "Buffer Start": ship_end, "ROJ": roj, "Buffer End": roj}
+        return {
+            "PO Execution": po_calc,
+            "Submittal Start": po_calc, "Submittal End": sub_end,
+            "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
+            "Shipping Start": mfg_end, "Shipping End": ship_end,
+            "Buffer Start": ship_end, "ROJ": roj, "Buffer End": roj,
+        }
     else:
         return {}
 
-# ============ UI: Title & Notes ============
+# ================= Title & Notes =================
 st.title("Procurement Calculator")
 st.subheader("Assumptions & Notes")
 st.markdown(
@@ -143,7 +152,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ============ Sidebar: Holiday presets ============
+# ================= Sidebar: Holiday presets =================
 with st.sidebar:
     st.subheader("Holiday Calendar")
 
@@ -186,97 +195,110 @@ with st.sidebar:
 
     calendar_choice = st.selectbox(
         "Preset",
-        ["None", "US Federal", "Spain (C. Valenciana)", "Netherlands", "Italy", "UK (England & Wales)", "Mexico"]
+        ["None","US Federal","Spain (C. Valenciana)","Netherlands","Italy","UK (England & Wales)","Mexico"]
     )
     holiday_set = build_calendar(calendar_choice)
 
-# ============ Buttons (Clear / Reset) ============
-c1, c2 = st.columns([1, 1])
-with c1:
-    if st.button("Clear All Inputs"):
-        # Keep equipment names; clear dates & durations back to defaults
-        base = pd.DataFrame(STANDARD_EQUIPMENT).copy()
-        base["Mode"] = ""
-        base["ROJ"] = pd.NaT
-        base["PO Execution"] = pd.NaT
-        base["Submittal (days)"] = DEFAULT_SUBMITTAL_DAYS
-        base["Shipping (days)"] = DEFAULT_SHIPPING_DAYS
-        base["Buffer (days)"] = DEFAULT_BUFFER_DAYS
-        st.session_state.work_df = base.copy()
-with c2:
-    if st.button("Reset Default Equipment"):
-        st.session_state.work_df = pd.DataFrame(STANDARD_EQUIPMENT).copy()
+# ================= Initialize / Buttons =================
+def make_default_df():
+    df = pd.DataFrame(STANDARD_EQUIPMENT)
+    df["Mode"] = ""
+    df["ROJ"] = pd.NaT
+    df["PO Execution"] = pd.NaT
+    df["Submittal (days)"] = DEFAULT_SUBMITTAL_DAYS
+    df["Shipping (days)"]  = DEFAULT_SHIPPING_DAYS
+    df["Buffer (days)"]    = DEFAULT_BUFFER_DAYS
+    return df
 
-# ============ Data & Editor ============
-# Initialize session data
 if "work_df" not in st.session_state or st.session_state.work_df is None:
-    st.session_state.work_df = pd.DataFrame(STANDARD_EQUIPMENT).copy()
+    st.session_state.work_df = make_default_df()
 
-# Ensure full standard list remains present (keep any custom items if later added)
-std_names = set(pd.DataFrame(STANDARD_EQUIPMENT)["Equipment"])
-current = st.session_state.work_df.copy()
-if "Equipment" not in current.columns:
-    current["Equipment"] = ""
-custom = current[~current["Equipment"].isin(std_names)] if not current.empty else pd.DataFrame(columns=["Equipment","Manufacturing (days)"])
-base_df = pd.DataFrame(STANDARD_EQUIPMENT)
-work_df = pd.concat([base_df, custom], ignore_index=True).drop_duplicates(subset=["Equipment"], keep="first")
+col1, col2 = st.columns([1,1], gap="small")
+with col1:
+    if st.button("Clear All Inputs"):
+        df = st.session_state.work_df.copy()
+        if "Mode" in df: df["Mode"] = ""
+        for c in ["ROJ","PO Execution"]:
+            if c in df: df[c] = pd.NaT
+        if "Submittal (days)" in df: df["Submittal (days)"] = DEFAULT_SUBMITTAL_DAYS
+        if "Shipping (days)"  in df: df["Shipping (days)"]  = DEFAULT_SHIPPING_DAYS
+        if "Buffer (days)"    in df: df["Buffer (days)"]    = DEFAULT_BUFFER_DAYS
+        st.session_state.work_df = df
+with col2:
+    if st.button("Reset Default Equipment"):
+        st.session_state.work_df = make_default_df()
 
-# Ensure editor columns exist with proper types/defaults
-editor_cols = ["Equipment","Mode","ROJ","PO Execution","Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]
+# ================= Data & Editor (stable) =================
+editor_cols = [
+    "Equipment","Mode","ROJ","PO Execution",
+    "Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"
+]
+# Ensure required columns exist; DO NOT coerce values
 for c in editor_cols:
-    if c not in work_df.columns:
-        if c == "Equipment": continue
-        elif c == "Mode": work_df[c] = ""  # blank by default
-        elif c in ("ROJ","PO Execution"): work_df[c] = pd.NaT
-        elif c == "Manufacturing (days)": work_df[c] = 0
-        elif c == "Submittal (days)": work_df[c] = DEFAULT_SUBMITTAL_DAYS
-        elif c == "Shipping (days)": work_df[c] = DEFAULT_SHIPPING_DAYS
-        elif c == "Buffer (days)": work_df[c] = DEFAULT_BUFFER_DAYS
+    if c not in st.session_state.work_df.columns:
+        if c in ("Equipment","Mode"):
+            st.session_state.work_df[c] = ""
+        elif c in ("ROJ","PO Execution"):
+            st.session_state.work_df[c] = pd.NaT
+        elif c == "Manufacturing (days)":
+            st.session_state.work_df[c] = 0
+        elif c == "Submittal (days)":
+            st.session_state.work_df[c] = DEFAULT_SUBMITTAL_DAYS
+        elif c == "Shipping (days)":
+            st.session_state.work_df[c] = DEFAULT_SHIPPING_DAYS
+        elif c == "Buffer (days)":
+            st.session_state.work_df[c] = DEFAULT_BUFFER_DAYS
 
-# Coerce types BEFORE editor so DateColumn works and numbers are numeric
-work_df["ROJ"] = pd.to_datetime(work_df["ROJ"], errors="coerce")
-work_df["PO Execution"] = pd.to_datetime(work_df["PO Execution"], errors="coerce")
-for num_col in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
-    work_df[num_col] = pd.to_numeric(work_df[num_col], errors="coerce").fillna(0).astype(int)
-
-# Persist to session
-st.session_state.work_df = work_df[editor_cols].copy()
+# Ensure date dtypes are datetime64[ns] so DateColumn won’t “blink” on first pick
+for c in ["ROJ","PO Execution"]:
+    if str(st.session_state.work_df[c].dtype) != "datetime64[ns]":
+        st.session_state.work_df[c] = pd.to_datetime(st.session_state.work_df[c], errors="coerce")
 
 st.markdown("### Equipment & Durations")
+
+# IMPORTANT: pass the WHOLE DF to the editor (no slicing), and use a stable key
 edited_df = st.data_editor(
     st.session_state.work_df,
+    key="equipment_editor",                      # stabilizes widget identity across reruns
     num_rows="dynamic",
     use_container_width=True,
     hide_index=True,
+    column_order=editor_cols,                    # show these columns in this order
     column_config={
         "Mode": st.column_config.SelectboxColumn("Mode", options=["","Forward","Backward"]),
         "ROJ": st.column_config.DateColumn("ROJ"),
         "PO Execution": st.column_config.DateColumn("PO Execution"),
-        "Submittal (days)": st.column_config.NumberColumn(min_value=0, step=1),
+        "Submittal (days)":     st.column_config.NumberColumn(min_value=0, step=1),
         "Manufacturing (days)": st.column_config.NumberColumn(min_value=0, step=1),
-        "Shipping (days)": st.column_config.NumberColumn(min_value=0, step=1),
-        "Buffer (days)": st.column_config.NumberColumn(min_value=0, step=1),
+        "Shipping (days)":      st.column_config.NumberColumn(min_value=0, step=1),
+        "Buffer (days)":        st.column_config.NumberColumn(min_value=0, step=1),
     },
 )
-# Coerce types AGAIN after edit to keep consistency (prevents “disappearing” dates)
-edited_df["ROJ"] = pd.to_datetime(edited_df["ROJ"], errors="coerce")
-edited_df["PO Execution"] = pd.to_datetime(edited_df["PO Execution"], errors="coerce")
-for num_col in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
-    edited_df[num_col] = pd.to_numeric(edited_df[num_col], errors="coerce").fillna(0).astype(int)
-st.session_state.work_df = edited_df.copy()
 
-# ============ Compute ============
+# Persist editor output as-is (NO coercion here)
+st.session_state.work_df = edited_df
+
+# ================= Compute =================
 def compute_all(df: pd.DataFrame) -> pd.DataFrame:
-    records = []
-    for _, row in df.iterrows():
-        mode = (row.get("Mode") or "").strip()
-        if mode not in ("Forward","Backward"):
-            continue  # skip until user chooses a mode
-        res = compute_pass(row, mode, holidays=holiday_set)
+    recs = []
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # Compute on a copy with soft coercion (not the editor DF)
+    calc = df.copy()
+    calc["ROJ"] = pd.to_datetime(calc.get("ROJ"), errors="coerce")
+    calc["PO Execution"] = pd.to_datetime(calc.get("PO Execution"), errors="coerce")
+    for col in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
+        calc[col] = pd.to_numeric(calc.get(col), errors="coerce")
+
+    for _, row in calc.iterrows():
+        mode = row.get("Mode", "")
+        if pd.isna(mode) or str(mode) not in ("Forward","Backward"):
+            continue
+        res = compute_pass(row, str(mode), holidays=holiday_set)
         if not res:
             continue
 
-        # Validation
         status = ""
         flt = None
         delta = None
@@ -286,75 +308,65 @@ def compute_all(df: pd.DataFrame) -> pd.DataFrame:
                 status = "⚠️ Past‑due PO"
                 s = bday_diff(po_req, TODAY, holiday_set)
                 flt = -abs(s) if s is not None else None
-        else:  # Forward
+        else:
             roj_calc = res.get("ROJ")
-            roj_target = pd.to_datetime(row.get("ROJ"))
+            roj_target = row.get("ROJ")
             if pd.notna(roj_calc) and pd.notna(roj_target) and roj_calc > roj_target:
                 status = "⛔ Not achievable"
                 delta = bday_diff(roj_target, roj_calc, holiday_set)
 
-        rec = {"Equipment": row.get("Equipment",""), "Mode": mode}
-        rec.update(res)
-        rec.update({
-            "Submittal (days)": row.get("Submittal (days)", DEFAULT_SUBMITTAL_DAYS),
-            "Manufacturing (days)": row.get("Manufacturing (days)", 0),
-            "Shipping (days)": row.get("Shipping (days)", DEFAULT_SHIPPING_DAYS),
-            "Buffer (days)": row.get("Buffer (days)", DEFAULT_BUFFER_DAYS),
+        d = {"Equipment": row.get("Equipment",""), "Mode": str(mode)}
+        d.update(res)
+        d.update({
+            "Submittal (days)":     as_int(row.get("Submittal (days)"), DEFAULT_SUBMITTAL_DAYS),
+            "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
+            "Shipping (days)":      as_int(row.get("Shipping (days)"), DEFAULT_SHIPPING_DAYS),
+            "Buffer (days)":        as_int(row.get("Buffer (days)"), DEFAULT_BUFFER_DAYS),
             "Status": status,
             "Float (days)": flt,
             "Delta to Target ROJ (days)": delta,
         })
-        records.append(rec)
-    return pd.DataFrame(records)
+        recs.append(d)
+    return pd.DataFrame(recs)
 
-results_df = compute_all(st.session_state.work_df)
+results = compute_all(st.session_state.work_df)
 
-# ============ Output: Table ============
+# ================= Output: Table =================
 st.markdown("### Calculated Dates")
-if results_df.empty:
+if results.empty:
     st.info("Choose Mode per row and enter either ROJ (Backward) or PO Execution (Forward).")
 else:
-    show_df = results_df.copy()
-    for c in show_df.columns:
+    show = results.copy()
+    for c in show.columns:
         if "Start" in c or "End" in c or c in {"PO Execution","ROJ"}:
-            show_df[c] = pd.to_datetime(show_df[c]).dt.date
-    st.dataframe(show_df, use_container_width=True, hide_index=True)
-    csv = show_df.to_csv(index=False).encode("utf-8")
+            show[c] = pd.to_datetime(show[c]).dt.date
+    st.dataframe(show, use_container_width=True, hide_index=True)
+    csv = show.to_csv(index=False).encode("utf-8")
     st.download_button("Download Results (CSV)", data=csv, file_name="procurement_pass_results.csv", mime="text/csv")
 
-# ============ Output: Gantt ============
+# ================= Output: Gantt =================
 st.markdown("### Timeline (per Equipment)")
-if not results_df.empty:
+if not results.empty:
     bars = []
     phase_order = [
-        ("Submittal", "Submittal Start", "Submittal End"),
+        ("Submittal",     "Submittal Start",     "Submittal End"),
         ("Manufacturing", "Manufacturing Start", "Manufacturing End"),
-        ("Shipping", "Shipping Start", "Shipping End"),
-        ("Buffer", "Buffer Start", "ROJ"),
+        ("Shipping",      "Shipping Start",      "Shipping End"),
+        ("Buffer",        "Buffer Start",        "ROJ"),
     ]
-    for _, r in results_df.iterrows():
+    for _, r in results.iterrows():
         for phase, s_col, e_col in phase_order:
-            s = r.get(s_col); e = r.get(e_col)
-            if pd.isna(s) or pd.isna(e): 
+            s, e = r.get(s_col), r.get(e_col)
+            if pd.isna(s) or pd.isna(e):
                 continue
-            bars.append({
-                "Equipment": r["Equipment"], "Phase": phase,
-                "Start": pd.to_datetime(s), "Finish": pd.to_datetime(e)
-            })
+            bars.append({"Equipment": r["Equipment"], "Phase": phase,
+                         "Start": pd.to_datetime(s), "Finish": pd.to_datetime(e)})
     if bars:
         gantt_df = pd.DataFrame(bars)
-        color_map = {
-            "Submittal": MANO_BLUE,      # #1b6a87
-            "Manufacturing": "#DECADE",
-            "Shipping": "#F6AE2D",
-            "Buffer": "#F34213",
-        }
+        color_map = {"Submittal": MANO_BLUE, "Manufacturing": "#DECADE", "Shipping": "#F6AE2D", "Buffer": "#F34213"}
         fig = px.timeline(
-            gantt_df,
-            x_start="Start", x_end="Finish",
-            y="Equipment",
-            color="Phase",
-            category_orders={"Phase": ["Submittal","Manufacturing","Shipping","Buffer"]},
+            gantt_df, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
+            category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer"]},
             color_discrete_map=color_map,
         )
         fig.update_yaxes(autorange="reversed")
@@ -362,5 +374,4 @@ if not results_df.empty:
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No timeline bars yet — enter dates to calculate first.")
-
 
