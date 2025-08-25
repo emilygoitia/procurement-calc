@@ -1,4 +1,4 @@
-# Procurement_Calculator.py — v7.1 (stable editor: no first-entry clearing)
+# Procurement_Calculator.py — v7.2 (single-entry commit)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -302,8 +302,11 @@ edited_df = st.data_editor(
     },
 )
 
-# Persist editor output as-is (NO coercion here)
-st.session_state.work_df = edited_df
+# Persist editor output only when it differs from the stored value. This
+# avoids an extra rerun that previously required users to enter a value twice
+# before it would stick in the table.
+if not edited_df.equals(st.session_state.work_df):
+    st.session_state.work_df = edited_df
 
 # ================= Compute =================
 def compute_all(df: pd.DataFrame) -> pd.DataFrame:
