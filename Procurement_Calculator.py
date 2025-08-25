@@ -34,8 +34,16 @@ section[data-testid="stSidebar"] > div {{ background: white; border-right: 4px s
 }}
 .dataframe tbody tr:nth-child(even) {{ background: rgba(27,106,135,0.05); }}
 /* Mano-blue focus outline on editable cells */
-.stDataFrame [data-testid="stDataFrameCell"]:focus {{
+.stDataFrame [data-testid="stDataFrameCell"]:focus,
+.stDataFrame [data-testid="stDataFrameCell"]:focus-within,
+.stDataFrame [data-testid="stDataFrameCell"] input:focus,
+.stDataFrame [data-testid="stDataFrameCell"] select:focus {{
   outline: 2px solid {MANO_BLUE} !important;
+  box-shadow: 0 0 0 1px {MANO_BLUE} !important;
+}}
+input:focus, select:focus, textarea:focus {{
+  outline: 2px solid {MANO_BLUE} !important;
+  box-shadow: 0 0 0 1px {MANO_BLUE} !important;
 }}
 .small-muted {{ color: #5c6b73; font-size: 0.875rem; }}
 </style>
@@ -302,11 +310,11 @@ edited_df = st.data_editor(
     },
 )
 
-# Persist editor output only when it differs from the stored value. This
-# avoids an extra rerun that previously required users to enter a value twice
-# before it would stick in the table.
+# Persist editor output only when it differs from the stored value. Copying
+# breaks references so subsequent edits are detected immediately and saved on
+# the first try.
 if not edited_df.equals(st.session_state.work_df):
-    st.session_state.work_df = edited_df
+    st.session_state.work_df = edited_df.copy()
 
 # ================= Compute =================
 def compute_all(df: pd.DataFrame) -> pd.DataFrame:
