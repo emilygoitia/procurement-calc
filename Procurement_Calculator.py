@@ -1,4 +1,4 @@
-# Procurement_Calculator.py — v7.2 (single-entry commit)
+# Procurement_Calculator.py — v7.3 (restore results table with slack column)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -326,26 +326,26 @@ def compute_all(df: pd.DataFrame) -> pd.DataFrame:
     calc = df.copy()
     calc["ROJ"] = pd.to_datetime(calc.get("ROJ"), errors="coerce")
     calc["PO Execution"] = pd.to_datetime(calc.get("PO Execution"), errors="coerce")
-    for col in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
+    for col in ["Submittal (days)", "Manufacturing (days)", "Shipping (days)", "Buffer (days)"]:
         calc[col] = pd.to_numeric(calc.get(col), errors="coerce")
 
     for _, row in calc.iterrows():
         mode = row.get("Mode", "")
-        if pd.isna(mode) or str(mode) not in ("Forward","Backward"):
+        if pd.isna(mode) or str(mode) not in ("Forward", "Backward"):
             continue
         res = compute_pass(row, str(mode), holidays=holiday_set)
         if not res:
             continue
 
         status = ""
-        flt = None
+        slack = None
         delta = None
         if mode == "Backward":
             po_req = res.get("PO Execution")
             if pd.notna(po_req) and po_req < TODAY:
                 status = "⚠️ Past‑due PO"
                 s = bday_diff(po_req, TODAY, holiday_set)
-                flt = -abs(s) if s is not None else None
+                slack = -abs(s) if s is not None else None
         else:
             roj_calc = res.get("ROJ")
             roj_target = row.get("ROJ")
@@ -353,7 +353,7 @@ def compute_all(df: pd.DataFrame) -> pd.DataFrame:
                 status = "⛔ Not achievable"
                 delta = bday_diff(roj_target, roj_calc, holiday_set)
 
-        d = {"Equipment": row.get("Equipment",""), "Mode": str(mode)}
+        d = {"Equipment": row.get("Equipment", ""), "Mode": str(mode)}
         d.update(res)
         d.update({
             "Submittal (days)":     as_int(row.get("Submittal (days)"), DEFAULT_SUBMITTAL_DAYS),
@@ -361,11 +361,25 @@ def compute_all(df: pd.DataFrame) -> pd.DataFrame:
             "Shipping (days)":      as_int(row.get("Shipping (days)"), DEFAULT_SHIPPING_DAYS),
             "Buffer (days)":        as_int(row.get("Buffer (days)"), DEFAULT_BUFFER_DAYS),
             "Status": status,
-            "Float (days)": flt,
+            "Slack (days)": slack,
             "Delta to Target ROJ (days)": delta,
         })
         recs.append(d)
-    return pd.DataFrame(recs)
+
+    if not recs:
+        return pd.DataFrame()
+
+    out = pd.DataFrame(recs)
+    table_cols = [
+        "Equipment", "Mode", "ROJ", "PO Execution",
+        "Submittal (days)", "Submittal Start", "Submittal End",
+        "Manufacturing (days)", "Manufacturing Start", "Manufacturing End",
+        "Shipping (days)", "Shipping Start", "Shipping End",
+        "Buffer (days)", "Buffer Start",
+        "Status", "Slack (days)", "Delta to Target ROJ (days)",
+    ]
+    existing = [c for c in table_cols if c in out.columns]
+    return out[existing]
 
 results = compute_all(st.session_state.work_df)
 
