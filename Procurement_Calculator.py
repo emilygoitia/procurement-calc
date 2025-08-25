@@ -84,14 +84,41 @@ def as_int(x, default=0):
         return default
 
 def bday_add(start, days, holidays=None):
-    if pd.isna(start) or days is None: return pd.NaT
-    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(start).date()), days,
-                                           holidays=sorted(list(holidays or set()))))
+    """Add business days to a date allowing non-biz start dates.
+
+    numpy.busday_offset raises an error when ``start`` falls on a weekend or
+    holiday unless a ``roll`` policy is provided.  Users of the app may enter
+    such dates (e.g. PO executed on a Saturday) which previously caused the
+    app to crash.  Rolling forward ensures the calculation proceeds from the
+    next valid business day.
+    """
+    if pd.isna(start) or days is None:
+        return pd.NaT
+    return pd.to_datetime(
+        np.busday_offset(
+            np.datetime64(pd.to_datetime(start).date()),
+            days,
+            holidays=sorted(list(holidays or set())),
+            roll="forward",
+        )
+    )
 
 def bday_sub(end, days, holidays=None):
-    if pd.isna(end) or days is None: return pd.NaT
-    return pd.to_datetime(np.busday_offset(np.datetime64(pd.to_datetime(end).date()), -days,
-                                           holidays=sorted(list(holidays or set()))))
+    """Subtract business days from a date allowing non-biz end dates.
+
+    ``roll='backward'`` lets numpy handle weekend/holiday end dates gracefully
+    by moving to the previous business day before subtracting the offset.
+    """
+    if pd.isna(end) or days is None:
+        return pd.NaT
+    return pd.to_datetime(
+        np.busday_offset(
+            np.datetime64(pd.to_datetime(end).date()),
+            -days,
+            holidays=sorted(list(holidays or set())),
+            roll="backward",
+        )
+    )
 
 def bday_diff(d1, d2, holidays):
     if pd.isna(d1) or pd.isna(d2): return None
