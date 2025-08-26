@@ -1,4 +1,4 @@
-
+# ---- v7.4 ----
 
 import streamlit as st
 import pandas as pd
@@ -32,7 +32,7 @@ h1, h2, h3, h4, h5, h6 {{ color: var(--mano-grey); font-weight: 600; }}
 section[data-testid="stSidebar"] > div {{ background: white; border-right: 4px solid var(--mano-blue); }}
 
 /* Buttons (including form submit) — Mano Blue */
-.stButton>button, .stDownloadButton>button, .stForm form button[kind="primary"] {{
+.stButton>button, .stDownloadButton>button, .stForm form button[kind="primary"], st.form_submit_button[kind="primary"] {{
   background: var(--mano-blue) !important; color: white !important; border: 0 !important;
   border-radius: 12px !important; padding: .5rem 1rem !important;
 }}
@@ -208,7 +208,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
                 "Manufacturing Start": None, "Manufacturing End": None,
                 "Shipping (days)": ship, "Shipping Start": None, "Shipping End": None,
                 "Buffer (days)": buf, "Buffer Start": None,
-                "Status": "ℹ️ PO missing; cannot compute forward.",
+                "Status": "ℹ️ PO missing; cannot calculate forward.",
                 "Float (days)": None,
                 "Delta to ROJ (days)": None,
                 "Delivery Date (committed)": committed_delivery,
@@ -261,6 +261,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
             po_req = res.get("PO Execution")
             if pd.notna(po_req):
                 # po_req already >= TODAY due to cap above
+                status = "‼️ PO is critical. Execute ASAP"
                 flt = bday_diff(TODAY, po_req, holiday_set)
 
         d = {
