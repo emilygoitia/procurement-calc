@@ -209,8 +209,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
                 "Shipping (days)": ship, "Shipping Start": None, "Shipping End": None,
                 "Buffer (days)": buf, "Buffer Start": None,
                 "Status": "ℹ️ PO missing; cannot calculate forward.",
-                "Float (days)": None,
-                "Delta to ROJ (days)": None,
+                "Delta/Float (days)": None,
                 "Delivery Date (committed)": committed_delivery,
                 "Delivery Date": None,
             })
@@ -229,8 +228,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
                 "Shipping (days)": ship,
                 "Buffer (days)": buf,
                 "Status": "ℹ️ Missing inputs for calculation.",
-                "Float (days)": None,
-                "Delta to ROJ (days)": None,
+                "Delta/Float (days)": None,
                 "Delivery Date (committed)": committed_delivery,
                 "Delivery Date": None,
             })
@@ -245,7 +243,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
         # ROJ column in results: only user-entered (no computed ROJ)
         roj_user = row.get("ROJ")
 
-        # Delta to ROJ (days): compare user ROJ vs final delivery, if both present
+        # Delta to ROJ: compare user ROJ vs final delivery, if both present
         delta = None
         status = ""
         if pd.notna(roj_user) and pd.notna(final_delivery):
@@ -260,9 +258,12 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
         if mode == "Backward":
             po_req = res.get("PO Execution")
             if pd.notna(po_req):
-                # po_req already >= TODAY due to cap above
-                status = "‼️ PO is critical. Execute ASAP"
                 flt = bday_diff(TODAY, po_req, holiday_set)
+                if flt is not None and flt <= 22:
+                    status = "‼️ PO is critical. Execute ASAP"
+
+        # Combined metric: delta if ROJ present, else float
+        combo = delta if delta is not None else flt
 
         d = {
             "Equipment": row.get("Equipment",""),
@@ -277,8 +278,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
             "Shipping Start": res.get("Shipping Start"), "Shipping End": res.get("Shipping End"),
             "Buffer (days)": buf, "Buffer Start": res.get("Buffer Start"),
             "Status": status if status else None,
-            "Float (days)": flt,
-            "Delta to ROJ (days)": delta,
+            "Delta/Float (days)": combo,
             "Delivery Date (committed)": committed_delivery,
             "Delivery Date": final_delivery,             # final for results
         }
@@ -295,7 +295,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
         "Manufacturing (days)","Manufacturing Start","Manufacturing End",
         "Shipping (days)","Shipping Start","Shipping End",
         "Buffer (days)","Buffer Start",
-        "Status","Float (days)","Delta to ROJ (days)",
+        "Status","Delta/Float (days)",
         "Delivery Date (committed)","Delivery Date",
     ]
     existing = [c for c in table_cols if c in out.columns]
@@ -450,7 +450,7 @@ with st.form("grid_form", clear_on_submit=False):
 # On Calculate: persist edits and compute
 if calc_clicked:
     st.session_state.work_df = edited_df.copy()
-    st.session_state.results = compute_all(edited_df, holiday_set)
+    st.session_state.results = compute_all(st.session_state.work_df, holiday_set)
 
 # ================= Output: Table =================
 st.markdown("### Calculated Dates")
@@ -484,10 +484,15 @@ if res is not None and not res.empty:
             has_any = True
             bars.append({"Equipment": r["Equipment"], "Phase": p,
                          "Start": pd.to_datetime(s_val), "Finish": pd.to_datetime(e_val)})
-        # If no full phases, add a 1-day milestone so the equipment appears
-        if not has_any:
-            # Prefer Delivery, then ROJ, then PO
-            milestone = r.get("Delivery Date") or r.get("ROJ") or r.get("PO Execution")
+        # Always add ROJ milestone if provided
+        if pd.notna(r.get("ROJ")):
+            roj_val = pd.to_datetime(r.get("ROJ"))
+            bars.append({"Equipment": r["Equipment"], "Phase": "ROJ",
+                         "Start": roj_val, "Finish": roj_val})
+        # If no full phases and no ROJ, add a 1-day milestone so the equipment appears
+        if not has_any and pd.isna(r.get("ROJ")):
+            # Prefer Delivery, then PO
+            milestone = r.get("Delivery Date") or r.get("PO Execution")
             if pd.notna(milestone):
                 start = pd.to_datetime(milestone)
                 finish = start  # 1-day marker will render as a thin bar
@@ -501,11 +506,12 @@ if res is not None and not res.empty:
             "Manufacturing": "#DECADE",
             "Shipping": "#F6AE2D",
             "Buffer": "#F34213",
+            "ROJ": MANO_GREY,
             "Milestone": MANO_BLUE,
         }
         fig = px.timeline(
             gantt_df, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
-            category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer","Milestone"]},
+            category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer","ROJ","Milestone"]},
             color_discrete_map=color_map,
         )
         fig.update_yaxes(autorange="reversed")
