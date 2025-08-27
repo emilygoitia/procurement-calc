@@ -234,11 +234,13 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
             })
             continue
 
-        # Delivery Date (final): committed overrides; else end of Buffer (or end of Shipping when Buffer=0)
+        # Delivery Date (final): always compute from PO -> Submittal -> Manufacturing -> Shipping -> Buffer
+        # (business-day math). Any user-committed date is retained separately but does not override
+        # the calculated result so we can compare the two.
         ship_end = res.get("Shipping End")
         buffer_end = res.get("Buffer End")
         computed_delivery = buffer_end if buf > 0 else ship_end
-        final_delivery = committed_delivery if pd.notna(committed_delivery) else computed_delivery
+        final_delivery = computed_delivery
 
         # ROJ column in results: only user-entered (no computed ROJ)
         roj_user = row.get("ROJ")
@@ -484,18 +486,18 @@ if res is not None and not res.empty:
             has_any = True
             bars.append({"Equipment": r["Equipment"], "Phase": p,
                          "Start": pd.to_datetime(s_val), "Finish": pd.to_datetime(e_val)})
-        # Always add ROJ milestone if provided
+        # Always add ROJ milestone if provided. Give it a small width so it renders visibly.
         if pd.notna(r.get("ROJ")):
             roj_val = pd.to_datetime(r.get("ROJ"))
             bars.append({"Equipment": r["Equipment"], "Phase": "ROJ",
-                         "Start": roj_val, "Finish": roj_val})
+                         "Start": roj_val, "Finish": roj_val + pd.Timedelta(days=1)})
         # If no full phases and no ROJ, add a 1-day milestone so the equipment appears
         if not has_any and pd.isna(r.get("ROJ")):
             # Prefer Delivery, then PO
             milestone = r.get("Delivery Date") or r.get("PO Execution")
             if pd.notna(milestone):
                 start = pd.to_datetime(milestone)
-                finish = start  # 1-day marker will render as a thin bar
+                finish = start + pd.Timedelta(days=1)
                 bars.append({"Equipment": r["Equipment"], "Phase": "Milestone",
                              "Start": start, "Finish": finish})
 
