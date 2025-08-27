@@ -378,13 +378,15 @@ if "editor_nonce" not in st.session_state:
     st.session_state.editor_nonce = 0
 
 # ================= Buttons =================
-c1, c2, _ = st.columns([1,1,2], gap="small")
+c1, _ = st.columns([1,3], gap="small")
 with c1:
     if st.button("Clear All Inputs"):
         df = st.session_state.work_df.copy()
         for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
-            if c == "Mode" and c in df: df[c] = ""
-            elif c in df: df[c] = pd.NaT
+            if c == "Mode" and c in df:
+                df[c] = ""
+            elif c in df:
+                df[c] = pd.NaT
         for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
             if c in df:
                 if c == "Manufacturing (days)":
@@ -398,11 +400,6 @@ with c1:
         st.session_state.work_df = df
         st.session_state.results = pd.DataFrame()   # clear output
         st.session_state.editor_nonce += 1          # force editor refresh
-with c2:
-    if st.button("Reset Default Equipment"):
-        st.session_state.work_df = make_default_df()
-        st.session_state.results = pd.DataFrame()
-        st.session_state.editor_nonce += 1
 
 # ================= Data Editor (FORM; Calculate-only) =================
 st.markdown("### Equipment & Durations")
@@ -453,7 +450,7 @@ with st.form("grid_form", clear_on_submit=False):
 # On Calculate: persist edits and compute
 if calc_clicked:
     st.session_state.work_df = edited_df.copy()
-    st.session_state.results = compute_all(st.session_state.work_df, holiday_set)
+    st.session_state.results = compute_all(edited_df, holiday_set)
 
 # ================= Output: Table =================
 st.markdown("### Calculated Dates")
