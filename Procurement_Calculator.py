@@ -5,6 +5,10 @@ import pandas as pd
 import numpy as np
 from datetime import date
 
+import utils.css as styling
+import utils.calendar as calendar
+import utils.colors as colors
+
 # ---- Plotly guard ----
 try:
     import plotly.express as px
@@ -12,61 +16,9 @@ except ModuleNotFoundError:
     st.error("Plotly isn’t installed. Run: pip install streamlit pandas numpy plotly")
     st.stop()
 
-# ================= Branding =================
-MANO_BLUE     = "#1b6a87"
-MANO_OFFWHITE = "#f4f6f6"
-MANO_GREY     = "#24333b"
-
-BRAND_CSS = f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700&display=swap');
-:root {{
-  --mano-blue: {MANO_BLUE};
-  --mano-offwhite: {MANO_OFFWHITE};
-  --mano-grey: {MANO_GREY};
-}}
-html, body, [class*="css"]  {{ font-family: 'Raleway', sans-serif; }}
-.stApp {{ background: var(--mano-offwhite); }}
-h1, h2, h3, h4, h5, h6 {{ color: var(--mano-grey); font-weight: 600; }}
-.block-container {{ padding-top: 1.0rem; }}
-section[data-testid="stSidebar"] > div {{ background: white; border-right: 4px solid var(--mano-blue); }}
-
-/* Buttons (including form submit) — Mano Blue */
-.stButton>button, .stDownloadButton>button, .stForm form button[kind="primary"], st.form_submit_button[kind="primary"] {{
-  background: var(--mano-blue) !important; color: white !important; border: 0 !important;
-  border-radius: 12px !important; padding: .5rem 1rem !important;
-}}
-.stButton>button:hover, .stDownloadButton>button:hover, .stForm form button[kind="primary"]:hover {{
-  filter: brightness(0.95);
-}}
-
-.dataframe tbody tr:nth-child(even) {{ background: rgba(27,106,135,0.05); }}
-
-/* Mano-blue focus + invalid outlines (override any red) */
-.stDataFrame [data-testid="stDataFrameCell"],
-.stDataFrame [data-testid="stDataFrameCell"] * {{
-  caret-color: {MANO_BLUE} !important;
-}}
-.stDataFrame [data-testid="stDataFrameCell"]:focus,
-.stDataFrame [data-testid="stDataFrameCell"]:focus-within,
-.stDataFrame [data-testid="stDataFrameCell"] input:focus,
-.stDataFrame [data-testid="stDataFrameCell"] select:focus,
-input:focus, select:focus, textarea:focus {{
-  outline: 2px solid {MANO_BLUE} !important;
-  box-shadow: 0 0 0 1px {MANO_BLUE} !important;
-  border-color: {MANO_BLUE} !important;
-}}
-.stDataFrame [data-testid="stDataFrameCell"] input[aria-invalid="true"],
-.stDataFrame [data-testid="stDataFrameCell"] select[aria-invalid="true"] {{
-  outline: 2px solid {MANO_BLUE} !important;
-  box-shadow: 0 0 0 1px {MANO_BLUE} !important;
-  border-color: {MANO_BLUE} !important;
-}}
-.small-muted {{ color: #5c6b73; font-size: 0.875rem; }}
-</style>
-"""
 st.set_page_config(page_title="Procurement Calculator", layout="wide")
-st.markdown(BRAND_CSS, unsafe_allow_html=True)
+styling.inject_custom_css()
+st.logo("./assets/images/Mano_Logo_Main.svg", icon_image="./assets/images/Mano_Mark_Mark.svg")
 
 # ================= Defaults / Constants =================
 DEFAULT_SUBMITTAL_DAYS = 15
@@ -318,45 +270,9 @@ st.markdown(
 
 # ================= Sidebar: Holiday presets =================
 with st.sidebar:
-    st.subheader("Holiday Calendar")
-    def build_calendar(name: str):
-        if name == "US Federal":
-            try:
-                from pandas.tseries.holiday import USFederalHolidayCalendar
-                cal = USFederalHolidayCalendar()
-                return set(pd.to_datetime(cal.holidays(start="2025-01-01", end="2027-12-31")).date)
-            except Exception:
-                return set()
-        if name == "Spain (C. Valenciana)":
-            return set(pd.to_datetime([
-                "2025-01-01","2025-01-06","2025-03-19","2025-04-18","2025-05-01","2025-08-15",
-                "2025-10-09","2025-10-12","2025-11-01","2025-12-06","2025-12-08","2025-12-25",
-                "2026-01-01","2026-01-06","2026-03-19","2026-04-03","2026-05-01","2026-08-15",
-                "2026-10-09","2026-10-12","2026-11-01","2026-12-06","2026-12-08","2026-12-25",
-            ]).date)
-        if name == "Netherlands":
-            return set(pd.to_datetime([
-                "2025-01-01","2025-04-18","2025-04-20","2025-04-21","2025-04-26","2025-05-05","2025-05-29","2025-06-09","2025-12-25","2025-12-26",
-                "2026-01-01","2026-04-03","2026-04-05","2026-04-06","2026-04-27","2026-05-05","2026-05-14","2026-05-25","2026-12-25","2026-12-26",
-            ]).date)
-        if name == "Italy":
-            return set(pd.to_datetime([
-                "2025-01-01","2025-01-06","2025-04-20","2025-04-21","2025-04-25","2025-05-01","2025-06-02","2025-08-15","2025-11-01","2025-12-08","2025-12-25","2025-12-26",
-                "2026-01-01","2026-01-06","2026-04-05","2026-04-06","2026-04-25","2026-05-01","2026-06-02","2026-08-15","2026-11-01","2026-12-08","2026-12-25","2026-12-26",
-            ]).date)
-        if name == "UK (England & Wales)":
-            return set(pd.to_datetime([
-                "2025-01-01","2025-04-18","2025-04-21","2025-05-05","2025-05-26","2025-08-25","2025-12-25","2025-12-26",
-                "2026-01-01","2026-04-03","2026-04-06","2026-05-04","2026-05-25","2026-08-31","2026-12-25","2026-12-28",
-            ]).date)
-        if name == "Mexico":
-            return set(pd.to_datetime([
-                "2025-01-01","2025-02-03","2025-03-17","2025-05-01","2025-09-16","2025-11-17","2025-12-25",
-                "2026-01-01","2026-02-02","2026-03-16","2026-05-01","2026-09-16","2026-11-16","2026-12-25",
-            ]).date)
-        return set()
+    st.header("Holiday Calendar")
     calendar_choice = st.selectbox("Preset", ["None","US Federal","Spain (C. Valenciana)","Netherlands","Italy","UK (England & Wales)","Mexico"])
-    holiday_set = build_calendar(calendar_choice)
+    holiday_set = calendar.build_for_region(calendar_choice)
 
 # ================= Session init =================
 def make_default_df():
@@ -504,12 +420,12 @@ if res is not None and not res.empty:
     if bars:
         gantt_df = pd.DataFrame(bars)
         color_map = {
-            "Submittal": MANO_BLUE,
-            "Manufacturing": "#DECADE",
-            "Shipping": "#F6AE2D",
-            "Buffer": "#F34213",
-            "ROJ": MANO_GREY,
-            "Milestone": MANO_BLUE,
+            "Submittal": colors.MANO_BLUE,
+            "Manufacturing": colors.MANUFACTURING,
+            "Shipping": colors.SHIPPING,
+            "Buffer": colors.BUFFER,
+            "ROJ": colors.MANO_GREY,
+            "Milestone": colors.MANO_BLUE,
         }
         fig = px.timeline(
             gantt_df, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
