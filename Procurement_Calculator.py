@@ -296,30 +296,31 @@ if "editor_nonce" not in st.session_state:
     st.session_state.editor_nonce = 0
 
 # ================= Buttons =================
-c1, _ = st.columns([1,3], gap="small")
-with c1:
-    if st.button("Clear All Inputs"):
-        df = st.session_state.work_df.copy()
-        for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
-            if c == "Mode" and c in df:
-                df[c] = ""
-            elif c in df:
-                df[c] = pd.NaT
-        for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
-            if c in df:
-                if c == "Manufacturing (days)":
-                    df[c] = 0
-                elif c == "Submittal (days)":
-                    df[c] = DEFAULT_SUBMITTAL_DAYS
-                elif c == "Shipping (days)":
-                    df[c] = DEFAULT_SHIPPING_DAYS
-                elif c == "Buffer (days)":
-                    df[c] = DEFAULT_BUFFER_DAYS
-        st.session_state.work_df = df
-        st.session_state.results = pd.DataFrame()   # clear output
-        st.session_state.editor_nonce += 1          # force editor refresh
+# c1, _ = st.columns([1,3], gap="small")
+# with c1:
+#     if st.button("Clear All Inputs"):
+#         df = st.session_state.work_df.copy()
+#         for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
+#             if c == "Mode" and c in df:
+#                 df[c] = ""
+#             elif c in df:
+#                 df[c] = pd.NaT
+#         for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
+#             if c in df:
+#                 if c == "Manufacturing (days)":
+#                     df[c] = 0
+#                 elif c == "Submittal (days)":
+#                     df[c] = DEFAULT_SUBMITTAL_DAYS
+#                 elif c == "Shipping (days)":
+#                     df[c] = DEFAULT_SHIPPING_DAYS
+#                 elif c == "Buffer (days)":
+#                     df[c] = DEFAULT_BUFFER_DAYS
+#         st.session_state.work_df = df
+#         st.session_state.results = pd.DataFrame()   # clear output
+#         st.session_state.editor_nonce += 1          # force editor refresh
 
 # ================= Data Editor (FORM; Calculate-only) =================
+
 st.markdown("### Equipment & Durations")
 st.caption("Only fill **Delivery Date (committed)** if a vendor has provided a firm date. If so, leave **Manufacturing (days)** blank and we’ll derive it.")
 
@@ -329,20 +330,20 @@ editor_cols = [
     "Delivery Date (committed)"  # LAST
 ]
 # Ensure columns exist with defaults
-for c in editor_cols:
-    if c not in st.session_state.work_df.columns:
-        if c in ("Equipment","Mode"):
-            st.session_state.work_df[c] = ""
-        elif c in ("ROJ","PO Execution","Delivery Date (committed)"):
-            st.session_state.work_df[c] = pd.NaT
-        elif c == "Manufacturing (days)":
-            st.session_state.work_df[c] = 0
-        elif c == "Submittal (days)":
-            st.session_state.work_df[c] = DEFAULT_SUBMITTAL_DAYS
-        elif c == "Shipping (days)":
-            st.session_state.work_df[c] = DEFAULT_SHIPPING_DAYS
-        elif c == "Buffer (days)":
-            st.session_state.work_df[c] = DEFAULT_BUFFER_DAYS
+# for c in editor_cols:
+#     if c not in st.session_state.work_df.columns:
+#         if c in ("Equipment","Mode"):
+#             st.session_state.work_df[c] = ""
+#         elif c in ("ROJ","PO Execution","Delivery Date (committed)"):
+#             st.session_state.work_df[c] = pd.NaT
+#         elif c == "Manufacturing (days)":
+#             st.session_state.work_df[c] = 0
+#         elif c == "Submittal (days)":
+#             st.session_state.work_df[c] = DEFAULT_SUBMITTAL_DAYS
+#         elif c == "Shipping (days)":
+#             st.session_state.work_df[c] = DEFAULT_SHIPPING_DAYS
+#         elif c == "Buffer (days)":
+#             st.session_state.work_df[c] = DEFAULT_BUFFER_DAYS
 
 with st.form("grid_form", clear_on_submit=False):
     edited_df = st.data_editor(
@@ -363,12 +364,40 @@ with st.form("grid_form", clear_on_submit=False):
             "Delivery Date (committed)": st.column_config.DateColumn("Delivery Date (committed)"),
         },
     )
-    calc_clicked = st.form_submit_button("Calculate", type="primary")
+    col1, col2 = st.columns([1, 1])
+    with col2:
+        submit = st.form_submit_button("Calculate", type="primary")
+    with col1:
+        reset = st.form_submit_button("Reset", type="secondary")
+    # calc_clicked = st.form_submit_button("Calculate", type="primary")
 
 # On Calculate: persist edits and compute
-if calc_clicked:
+if submit:
     st.session_state.work_df = edited_df.copy()
     st.session_state.results = compute_all(st.session_state.work_df, holiday_set)
+
+#TODO: handle RESET w/ DEFAULTS
+if reset:
+    df = st.session_state.work_df.copy()
+    for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
+        if c == "Mode" and c in df:
+            df[c] = ""
+        elif c in df:
+            df[c] = pd.NaT
+    for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
+        if c in df:
+            if c == "Manufacturing (days)":
+                df[c] = 0
+            elif c == "Submittal (days)":
+                df[c] = DEFAULT_SUBMITTAL_DAYS
+            elif c == "Shipping (days)":
+                df[c] = DEFAULT_SHIPPING_DAYS
+            elif c == "Buffer (days)":
+                df[c] = DEFAULT_BUFFER_DAYS
+    st.session_state.work_df = df
+    st.session_state.results = pd.DataFrame()   # clear output
+    st.session_state.editor_nonce += 1          # force editor refresh
+
 
 # ================= Output: Table =================
 st.markdown("### Calculated Dates")
