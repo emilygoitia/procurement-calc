@@ -178,36 +178,31 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
                     mfg_dur = 0
                 row["Manufacturing (days)"] = mfg_dur
 
-        if mode == "Forward" and pd.isna(po):
-            recs.append({
-                "Equipment": row.get("Equipment",""),
-                "Mode": mode,
-                "ROJ": row.get("ROJ"),
-                "PO Execution": None,
-                "Submittal (days)": sub, "Submittal Start": None, "Submittal End": None,
-                "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
-                "Manufacturing Start": None, "Manufacturing End": None,
-                "Shipping (days)": ship, "Shipping Start": None, "Shipping End": None,
-                "Buffer (days)": buf, "Buffer Start": None,
-                "Status": "PO missing; cannot calculate forward.",
-                "Delta/Float (days)": None,
-                "Delivery Date (committed)": committed_delivery,
-                "Delivery Date": None,
-            })
-            continue
-
         res = compute_pass(row, mode, holiday_set)
         if not res:
+            status_msg = "Missing inputs for calculation."
+            po_display = row.get("PO Execution")
+            if mode == "Forward" and pd.isna(po):
+                status_msg = "⚠️ Missing PO Execution; dates not computed"
+                po_display = None
+
             recs.append({
                 "Equipment": row.get("Equipment",""),
                 "Mode": mode,
                 "ROJ": row.get("ROJ"),
-                "PO Execution": row.get("PO Execution"),
+                "PO Execution": po_display,
                 "Submittal (days)": sub,
+                "Submittal Start": None,
+                "Submittal End": None,
                 "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
+                "Manufacturing Start": None,
+                "Manufacturing End": None,
                 "Shipping (days)": ship,
+                "Shipping Start": None,
+                "Shipping End": None,
                 "Buffer (days)": buf,
-                "Status": "Missing inputs for calculation.",
+                "Buffer Start": None,
+                "Status": status_msg,
                 "Delta/Float (days)": None,
                 "Delivery Date (committed)": committed_delivery,
                 "Delivery Date": None,
