@@ -452,13 +452,31 @@ with c1:
 
 # ====== NEW: Baseline lock / reset =============================================
 with c2:
-    lockable = st.session_state.results is not None and not st.session_state.results.empty
-    if st.button("🔒Lock Baseline", disabled=not lockable):
-        # Snapshot current results as baseline (date-normalized)
-        base = st.session_state.results.copy()
-        for c in DATE_COLS:
+    # Enable if there are results OR at least one row has a Mode set
+    has_modes = False
+    if isinstance(st.session_state.work_df, pd.DataFrame) and "Mode" in st.session_state.work_df.columns:
+        modes_series = st.session_state.work_df["Mode"].fillna("")
+        has_modes = modes_series.isin(["Forward", "Backward"]).any()
+
+    has_results = st.session_state.results is not None and not st.session_state.results.empty
+    lockable = has_results or has_modes
+
+    if st.button("🔒 Lock Baseline", disabled=not lockable):
+        # Ensure we lock the latest calc; if empty, compute on the fly
+        current = st.session_state.results
+        if current is None or current.empty:
+            current = compute_all(st.session_state.work_df, holiday_set)
+
+        base = current.copy()
+        for c in [
+            "PO Execution","Submittal Start","Submittal End",
+            "Manufacturing Start","Manufacturing End",
+            "Shipping Start","Shipping End",
+            "Buffer Start","Delivery Date","ROJ","Delivery Date (committed)"
+        ]:
             if c in base.columns:
                 base[c] = pd.to_datetime(base[c], errors="coerce")
+
         st.session_state.baseline = base
         st.session_state.baseline_meta = {
             "locked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -466,7 +484,7 @@ with c2:
         }
 
 with c3:
-    if st.button("Reset Baseline", disabled=st.session_state.baseline.empty):
+    if st.button("🧹 Reset Baseline", disabled=st.session_state.baseline.empty):
         st.session_state.baseline = pd.DataFrame()
         st.session_state.baseline_meta = {}
 
