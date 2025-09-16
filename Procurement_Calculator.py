@@ -183,7 +183,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
             status_msg = "Missing inputs for calculation."
             po_display = row.get("PO Execution")
             if mode == "Forward" and pd.isna(po):
-                status_msg = "⚠️ Missing PO Execution; dates not computed"
+                status_msg = "⚠️Missing PO Execution; dates not computed"
                 po_display = None
 
             recs.append({
@@ -456,7 +456,7 @@ with c2:
     has_results = st.session_state.results is not None and not st.session_state.results.empty
     lockable = has_results or has_modes
 
-    if st.button("🔒 Lock Baseline", disabled=not lockable):
+    if st.button("Lock Baseline", disabled=not lockable):
         # Ensure we lock the latest calc; if empty, compute on the fly
         current = st.session_state.results
         if current is None or current.empty:
@@ -479,7 +479,7 @@ with c2:
         }
 
 with c3:
-    if st.button("🧹 Reset Baseline", disabled=st.session_state.baseline.empty):
+    if st.button("Reset Baseline", disabled=st.session_state.baseline.empty):
         st.session_state.baseline = pd.DataFrame()
         st.session_state.baseline_meta = {}
 
