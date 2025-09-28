@@ -258,9 +258,9 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
 # ================= Title & Notes =================
 st.title("Procurement Calculator")
 st.subheader("Assumptions & Notes")
-st.markdown(
+st.write(
     """
-<div class="small-muted">
+<div class="small-muted mb-2">
 <b>Assumptions:</b> Business-day math (Mon–Fri). Choose a single holiday preset.<br>
 <b>Per-row Mode:</b> Forward = compute from PO; Backward = compute PO from ROJ.<br>
 <b>Delivery Date (committed):</b> Only enter if a vendor has committed; if so, leave <i>Manufacturing (days)</i> blank and we’ll derive it.<br>

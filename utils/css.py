@@ -19,6 +19,22 @@ def inject_custom_css():
         color: var(--mano-grey); 
         font-weight: 600;
       }}
+
+      .my-2 {{
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+      }}
+      .my-4 {{
+        margin-top: 4rem;
+        margin-bottom: 4rem;
+      }}
+      .mb-2 {{
+        margin-bottom: 2rem;
+      }}
+      .mb-4 {{
+        margin-bottom: 4rem;
+      }}
+
       [data-testid="stDecoration"] {{
         display: none;
       }}
