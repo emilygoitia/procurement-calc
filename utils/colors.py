@@ -6,3 +6,4 @@ MANUFACTURING = "#DECADE"   # requested color
 BUFFER = "#F34213"
 SHIPPING = "#F6AE2D"
 L5_COLOR = "#8AAA79"
+GHOST_NEUTRAL = "#708090"  # neutral ghost

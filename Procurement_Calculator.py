@@ -1,9 +1,9 @@
-# ---- v7.4 ----
+# ---- v7.5 ----
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import date
+from datetime import date, datetime
 
 import utils.css as styling
 import utils.calendar as calendar
@@ -77,7 +77,6 @@ def bday_diff(d1, d2, holidays):
                                holidays=sorted(list(holidays or set()))))
 
 def compute_pass(row, mode, holidays):
-    """Forward/backward engine using business-day math."""
     sub  = as_int(row.get("Submittal (days)"), DEFAULT_SUBMITTAL_DAYS)
     mfg  = as_int(row.get("Manufacturing (days)"), 0)
     ship = as_int(row.get("Shipping (days)"),  DEFAULT_SHIPPING_DAYS)
@@ -96,13 +95,13 @@ def compute_pass(row, mode, holidays):
                 "Manufacturing Start": sub_end, "Manufacturing End": mfg_end,
                 "Shipping Start": mfg_end, "Shipping End": ship_end,
                 "Buffer Start": ship_end, "ROJ_calc": roj_calc, "Buffer End": roj_calc}
+
     if mode == "Backward":
         if pd.isna(roj): return {}
         ship_end = bday_sub(roj, buf, holidays)
         mfg_end  = bday_sub(ship_end, ship, holidays)
         sub_end  = bday_sub(mfg_end, mfg, holidays)
         po_calc  = bday_sub(sub_end, sub, holidays)
-        # Cap calculated required PO at today (don’t say it was needed earlier than today)
         if pd.notna(po_calc) and po_calc < TODAY:
             po_calc = TODAY
         return {"PO Execution": po_calc,
@@ -113,12 +112,10 @@ def compute_pass(row, mode, holidays):
     return {}
 
 def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
-    """Compute result rows from editor data. Requires holiday_set."""
     recs = []
     if df is None or df.empty:
         return pd.DataFrame()
 
-    # Soft coercions
     calc = df.copy()
     for c in ["ROJ","PO Execution","Delivery Date (committed)"]:
         calc[c] = pd.to_datetime(calc.get(c), errors="coerce")
@@ -137,7 +134,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
         ship = as_int(row.get("Shipping (days)"), DEFAULT_SHIPPING_DAYS)
         buf = as_int(row.get("Buffer (days)"), DEFAULT_BUFFER_DAYS)
 
-        # If committed delivery provided and mfg blank, derive Manufacturing (days) (Forward logic)
+        # Derive Manufacturing (days) if committed delivery is present (Forward)
         if mode == "Forward" and pd.notna(committed_delivery) and (pd.isna(mfg) or mfg == "") and pd.notna(po):
             mfg_end = bday_sub(committed_delivery, buf, holiday_set)
             mfg_end = bday_sub(mfg_end, ship, holiday_set)
@@ -148,82 +145,68 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
                     mfg_dur = 0
                 row["Manufacturing (days)"] = mfg_dur
 
-        # Guard: Forward needs PO
-        if mode == "Forward" and pd.isna(po):
-            recs.append({
-                "Equipment": row.get("Equipment",""),
-                "Mode": mode,
-                "ROJ": row.get("ROJ"),  # user ROJ only (no computed)
-                "PO Execution": None,
-                "Submittal (days)": sub, "Submittal Start": None, "Submittal End": None,
-                "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
-                "Manufacturing Start": None, "Manufacturing End": None,
-                "Shipping (days)": ship, "Shipping Start": None, "Shipping End": None,
-                "Buffer (days)": buf, "Buffer Start": None,
-                "Status": "ℹ️ PO missing; cannot calculate forward.",
-                "Delta/Float (days)": None,
-                "Delivery Date (committed)": committed_delivery,
-                "Delivery Date": None,
-            })
-            continue
-
         res = compute_pass(row, mode, holiday_set)
         if not res:
-            # e.g., Backward without ROJ
+            status_msg = "Missing inputs for calculation."
+            po_display = row.get("PO Execution")
+            if mode == "Forward" and pd.isna(po):
+                status_msg = "⚠️Missing PO Execution; dates not computed"
+                po_display = None
+
             recs.append({
                 "Equipment": row.get("Equipment",""),
                 "Mode": mode,
                 "ROJ": row.get("ROJ"),
-                "PO Execution": row.get("PO Execution"),
+                "PO Execution": po_display,
                 "Submittal (days)": sub,
+                "Submittal Start": None,
+                "Submittal End": None,
                 "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
+                "Manufacturing Start": None,
+                "Manufacturing End": None,
                 "Shipping (days)": ship,
+                "Shipping Start": None,
+                "Shipping End": None,
                 "Buffer (days)": buf,
-                "Status": "ℹ️ Missing inputs for calculation.",
+                "Buffer Start": None,
+                "Status": status_msg,
                 "Delta/Float (days)": None,
                 "Delivery Date (committed)": committed_delivery,
                 "Delivery Date": None,
             })
             continue
 
-        # Delivery Date (final): always compute from PO -> Submittal -> Manufacturing -> Shipping -> Buffer
-        # (business-day math). Any user-committed date is retained separately but does not override
-        # the calculated result so we can compare the two.
         ship_end = res.get("Shipping End")
         buffer_end = res.get("Buffer End")
         computed_delivery = buffer_end if buf > 0 else ship_end
         final_delivery = computed_delivery
 
-        # ROJ column in results: only user-entered (no computed ROJ)
         roj_user = row.get("ROJ")
 
-        # Delta to ROJ: compare user ROJ vs final delivery, if both present
         delta = None
         status = ""
         if pd.notna(roj_user) and pd.notna(final_delivery):
             delta = bday_diff(roj_user, final_delivery, holiday_set)
             if delta is not None and delta > 0:
-                status = "⛔ Late vs ROJ"
+                status = "⛔Late vs ROJ"
             elif delta is not None and delta <= 0:
                 status = "✓ Meets/early vs ROJ"
 
-        # Float (Backward): business days from today to required PO date (capped in compute_pass)
         flt = None
         if mode == "Backward":
             po_req = res.get("PO Execution")
             if pd.notna(po_req):
                 flt = bday_diff(TODAY, po_req, holiday_set)
                 if flt is not None and flt <= 22:
-                    status = "‼️ PO is critical. Execute ASAP"
+                    status = "‼️PO is critical. Execute ASAP"
 
-        # Combined metric: delta if ROJ present, else float
         combo = delta if delta is not None else flt
 
         d = {
             "Equipment": row.get("Equipment",""),
             "Mode": mode,
-            "ROJ": roj_user,                             # user-entered only
-            "PO Execution": res.get("PO Execution"),     # computed or user
+            "ROJ": roj_user,
+            "PO Execution": res.get("PO Execution"),
             "Submittal (days)": sub,
             "Submittal Start": res.get("Submittal Start"), "Submittal End": res.get("Submittal End"),
             "Manufacturing (days)": as_int(row.get("Manufacturing (days)"), 0),
@@ -234,7 +217,7 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
             "Status": status if status else None,
             "Delta/Float (days)": combo,
             "Delivery Date (committed)": committed_delivery,
-            "Delivery Date": final_delivery,             # final for results
+            "Delivery Date": final_delivery,
         }
         recs.append(d)
 
@@ -242,7 +225,6 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
         return pd.DataFrame()
 
     out = pd.DataFrame(recs)
-    # Results column order (ROJ kept, Delivery columns at the end)
     table_cols = [
         "Equipment","Mode","ROJ","PO Execution",
         "Submittal (days)","Submittal Start","Submittal End",
@@ -255,6 +237,76 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
     existing = [c for c in table_cols if c in out.columns]
     return out[existing]
 
+# ====== NEW: Baseline helpers ===================================================
+DATE_COLS = [
+    "PO Execution","Submittal Start","Submittal End",
+    "Manufacturing Start","Manufacturing End",
+    "Shipping Start","Shipping End",
+    "Buffer Start","Delivery Date","ROJ","Delivery Date (committed)"
+]
+
+def _norm_dates(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    for c in DATE_COLS:
+        if c in out.columns:
+            out[c] = pd.to_datetime(out[c], errors="coerce")
+    return out
+
+def compare_to_baseline(current: pd.DataFrame, baseline: pd.DataFrame, holiday_set) -> pd.DataFrame:
+    """Return a tidy comparison with Δ (business days) per key date."""
+    if current is None or current.empty or baseline is None or baseline.empty:
+        return pd.DataFrame()
+
+    cur = _norm_dates(current)
+    base = _norm_dates(baseline)
+
+    # Merge on Equipment (assumes unique Equipment per row; if not, consider adding an ID)
+    merged = pd.merge(
+        base.add_prefix("Base: "),
+        cur.add_prefix("New: "),
+        left_on="Base: Equipment", right_on="New: Equipment",
+        how="outer", indicator=True
+    )
+
+    # Compute deltas for each comparable date field
+    def delta_col(col_name):
+        bcol = f"Base: {col_name}"
+        ncol = f"New: {col_name}"
+        if bcol in merged.columns and ncol in merged.columns:
+            merged[f"Δ {col_name} (bd)"] = merged.apply(
+                lambda r: bday_diff(r[bcol], r[ncol], holiday_set) if not (pd.isna(r[bcol]) or pd.isna(r[ncol])) else None,
+                axis=1
+            )
+
+    for c in ["PO Execution","Submittal End","Manufacturing End","Shipping End","Delivery Date","ROJ"]:
+        delta_col(c)
+
+    # Flags
+    merged["Changed?"] = merged.apply(
+        lambda r: any([
+            r.get(f"Δ {c} (bd)") not in (None, 0) for c in ["PO Execution","Submittal End","Manufacturing End","Shipping End","Delivery Date","ROJ"]
+        ]),
+        axis=1
+    )
+
+    # Pretty ordering
+    keep = [
+        "New: Equipment","Changed?",
+        "Base: Mode","New: Mode",
+        "Base: PO Execution","New: PO Execution","Δ PO Execution (bd)",
+        "Base: Submittal End","New: Submittal End","Δ Submittal End (bd)",
+        "Base: Manufacturing End","New: Manufacturing End","Δ Manufacturing End (bd)",
+        "Base: Shipping End","New: Shipping End","Δ Shipping End (bd)",
+        "Base: Delivery Date","New: Delivery Date","Δ Delivery Date (bd)",
+        "Base: ROJ","New: ROJ","Δ ROJ (bd)",
+        "Base: Status","New: Status","Base: Delta/Float (days)","New: Delta/Float (days)"
+    ]
+    keep = [c for c in keep if c in merged.columns]
+    merged = merged[keep].rename(columns={"New: Equipment":"Equipment"})
+    return merged
+
 # ================= Title & Notes =================
 st.title("Procurement Calculator")
 st.subheader("Assumptions & Notes")
@@ -263,8 +315,8 @@ st.write(
 <div class="small-muted mb-2">
 <b>Assumptions:</b> Business-day math (Mon–Fri). Choose a single holiday preset.<br>
 <b>Per-row Mode:</b> Forward = compute from PO; Backward = compute PO from ROJ.<br>
-<b>Delivery Date (committed):</b> Only enter if a vendor has committed; if so, leave <i>Manufacturing (days)</i> blank and we’ll derive it.<br>
-<b>PO Execution:</b> If calculated (Backward) and it lands before today, we cap it at today. Manually-entered past dates are allowed in Forward mode.<br>
+<b>Committed Delivery:</b> If present, leave <i>Manufacturing (days)</i> blank and we’ll derive it.<br>
+<b>Backward PO cap:</b> If calculated PO lands before today, we cap it at today (manual past POs are allowed in Forward).<br>
 </div>
 """, unsafe_allow_html=True)
 
@@ -291,33 +343,76 @@ if "work_df" not in st.session_state or st.session_state.work_df is None:
     st.session_state.work_df = make_default_df()
 if "results" not in st.session_state:
     st.session_state.results = pd.DataFrame()
-# Editor refresh nonce (force grid rebuild on clear/reset)
 if "editor_nonce" not in st.session_state:
     st.session_state.editor_nonce = 0
 
-# ================= Buttons =================
-# c1, _ = st.columns([1,3], gap="small")
-# with c1:
-#     if st.button("Clear All Inputs"):
-#         df = st.session_state.work_df.copy()
-#         for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
-#             if c == "Mode" and c in df:
-#                 df[c] = ""
-#             elif c in df:
-#                 df[c] = pd.NaT
-#         for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
-#             if c in df:
-#                 if c == "Manufacturing (days)":
-#                     df[c] = 0
-#                 elif c == "Submittal (days)":
-#                     df[c] = DEFAULT_SUBMITTAL_DAYS
-#                 elif c == "Shipping (days)":
-#                     df[c] = DEFAULT_SHIPPING_DAYS
-#                 elif c == "Buffer (days)":
-#                     df[c] = DEFAULT_BUFFER_DAYS
-#         st.session_state.work_df = df
-#         st.session_state.results = pd.DataFrame()   # clear output
-#         st.session_state.editor_nonce += 1          # force editor refresh
+# ====== NEW: baseline session slots ============================================
+if "baseline" not in st.session_state:
+    st.session_state.baseline = pd.DataFrame()
+if "baseline_meta" not in st.session_state:
+    st.session_state.baseline_meta = {}
+
+# ================= Top buttons (Clear / Baseline) =================
+c1, c2, c3, _ = st.columns([1,1,1,5], gap="small")
+with c1:
+    if st.button("Clear All Inputs"):
+        df = st.session_state.work_df.copy()
+        for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
+            if c == "Mode" and c in df:
+                df[c] = ""
+            elif c in df:
+                df[c] = pd.NaT
+        for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
+            if c in df:
+                if c == "Manufacturing (days)":
+                    df[c] = 0
+                elif c == "Submittal (days)":
+                    df[c] = DEFAULT_SUBMITTAL_DAYS
+                elif c == "Shipping (days)":
+                    df[c] = DEFAULT_SHIPPING_DAYS
+                elif c == "Buffer (days)":
+                    df[c] = DEFAULT_BUFFER_DAYS
+        st.session_state.work_df = df
+        st.session_state.results = pd.DataFrame()
+        st.session_state.editor_nonce += 1
+
+# ====== NEW: Baseline lock / reset =============================================
+with c2:
+    # Enable if there are results OR at least one row has a Mode set
+    has_modes = False
+    if isinstance(st.session_state.work_df, pd.DataFrame) and "Mode" in st.session_state.work_df.columns:
+        modes_series = st.session_state.work_df["Mode"].fillna("")
+        has_modes = modes_series.isin(["Forward", "Backward"]).any()
+
+    has_results = st.session_state.results is not None and not st.session_state.results.empty
+    lockable = has_results or has_modes
+
+    if st.button("Lock Baseline", disabled=not lockable):
+        # Ensure we lock the latest calc; if empty, compute on the fly
+        current = st.session_state.results
+        if current is None or current.empty:
+            current = compute_all(st.session_state.work_df, holiday_set)
+
+        base = current.copy()
+        for c in [
+            "PO Execution","Submittal Start","Submittal End",
+            "Manufacturing Start","Manufacturing End",
+            "Shipping Start","Shipping End",
+            "Buffer Start","Delivery Date","ROJ","Delivery Date (committed)"
+        ]:
+            if c in base.columns:
+                base[c] = pd.to_datetime(base[c], errors="coerce")
+
+        st.session_state.baseline = base
+        st.session_state.baseline_meta = {
+            "locked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "calendar": calendar_choice,
+        }
+
+with c3:
+    if st.button("Reset Baseline", disabled=st.session_state.baseline.empty):
+        st.session_state.baseline = pd.DataFrame()
+        st.session_state.baseline_meta = {}
 
 # ================= Data Editor (FORM; Calculate-only) =================
 
@@ -327,23 +422,22 @@ st.caption("Only fill **Delivery Date (committed)** if a vendor has provided a f
 editor_cols = [
     "Equipment","Mode","ROJ","PO Execution",
     "Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)",
-    "Delivery Date (committed)"  # LAST
+    "Delivery Date (committed)"
 ]
-# Ensure columns exist with defaults
-# for c in editor_cols:
-#     if c not in st.session_state.work_df.columns:
-#         if c in ("Equipment","Mode"):
-#             st.session_state.work_df[c] = ""
-#         elif c in ("ROJ","PO Execution","Delivery Date (committed)"):
-#             st.session_state.work_df[c] = pd.NaT
-#         elif c == "Manufacturing (days)":
-#             st.session_state.work_df[c] = 0
-#         elif c == "Submittal (days)":
-#             st.session_state.work_df[c] = DEFAULT_SUBMITTAL_DAYS
-#         elif c == "Shipping (days)":
-#             st.session_state.work_df[c] = DEFAULT_SHIPPING_DAYS
-#         elif c == "Buffer (days)":
-#             st.session_state.work_df[c] = DEFAULT_BUFFER_DAYS
+for c in editor_cols:
+    if c not in st.session_state.work_df.columns:
+        if c in ("Equipment","Mode"):
+            st.session_state.work_df[c] = ""
+        elif c in ("ROJ","PO Execution","Delivery Date (committed)"):
+            st.session_state.work_df[c] = pd.NaT
+        elif c == "Manufacturing (days)":
+            st.session_state.work_df[c] = 0
+        elif c == "Submittal (days)":
+            st.session_state.work_df[c] = DEFAULT_SUBMITTAL_DAYS
+        elif c == "Shipping (days)":
+            st.session_state.work_df[c] = DEFAULT_SHIPPING_DAYS
+        elif c == "Buffer (days)":
+            st.session_state.work_df[c] = DEFAULT_BUFFER_DAYS
 
 with st.form("grid_form", clear_on_submit=False):
     edited_df = st.data_editor(
@@ -366,13 +460,11 @@ with st.form("grid_form", clear_on_submit=False):
     )
     col1, col2 = st.columns([1, 1])
     with col2:
-        submit = st.form_submit_button("Calculate", type="primary")
+        calc_clicked = st.form_submit_button("Calculate", type="primary")
     with col1:
         reset = st.form_submit_button("Reset", type="secondary")
-    # calc_clicked = st.form_submit_button("Calculate", type="primary")
 
-# On Calculate: persist edits and compute
-if submit:
+if calc_clicked:
     st.session_state.work_df = edited_df.copy()
     st.session_state.results = compute_all(st.session_state.work_df, holiday_set)
 
@@ -401,27 +493,60 @@ if reset:
 
 # ================= Output: Table =================
 st.markdown("### Calculated Dates")
+
 if st.session_state.results is None or st.session_state.results.empty:
     st.info("Fill the table, then click **Calculate**.")
 else:
-    show = st.session_state.results.copy()
-    for c in show.columns:
-        if "Start" in c or "End" in c or c in {"PO Execution","ROJ","Delivery Date (committed)","Delivery Date"}:
-            show[c] = pd.to_datetime(show[c]).dt.date
-    st.dataframe(show, use_container_width=True, hide_index=True)
-    csv = show.to_csv(index=False).encode("utf-8")
-    st.download_button("Download Results (CSV)", data=csv, file_name="procurement_pass_results.csv", mime="text/csv")
+    # View toggle: Current vs Compare
+    view = "Current"
+    if not st.session_state.baseline.empty:
+        meta = st.session_state.baseline_meta
+        blurb = f" (baseline {meta.get('locked_at','')} – {meta.get('calendar','')})"
+        view = st.radio("View", ["Current","Compare to Baseline"], horizontal=True, index=0, help="Lock a baseline, then compare.")
+        st.caption(f"Baseline locked{blurb}")
+
+    # Format helper
+    def _dates_to_date(df):
+        out = df.copy()
+        for c in out.columns:
+            if ("Start" in c or "End" in c or c in {"PO Execution","ROJ","Delivery Date (committed)","Delivery Date"}) and pd.api.types.is_datetime64_any_dtype(out[c]):
+                out[c] = pd.to_datetime(out[c]).dt.date
+        return out
+
+    if view == "Current":
+        show = _dates_to_date(st.session_state.results.copy())
+        st.dataframe(show, use_container_width=True, hide_index=True)
+        st.download_button("Download Results (CSV)", data=show.to_csv(index=False).encode("utf-8"),
+                           file_name="procurement_pass_results.csv", mime="text/csv")
+    else:
+        comp = compare_to_baseline(st.session_state.results, st.session_state.baseline, holiday_set)
+        # Show deltas with simple emoji cues
+        def delta_icon(v):
+            if pd.isna(v) or v == 0: return ""
+            return "▲" if v and v > 0 else "▼"
+        display = comp.copy()
+        for c in [col for col in display.columns if col.startswith("Δ ")]:
+            display[c] = display[c].apply(lambda v: f"{delta_icon(v)} {v} bd" if pd.notna(v) else "")
+        # Dates to date
+        for c in display.columns:
+            if any(x in c for x in ["Base: ","New: "]):
+                # try converting
+                display[c] = pd.to_datetime(display[c], errors="coerce").dt.date
+        st.dataframe(display, use_container_width=True, hide_index=True)
+        st.download_button("Download Compare (CSV)", data=comp.to_csv(index=False).encode("utf-8"),
+                           file_name="procurement_baseline_compare.csv", mime="text/csv")
 
 # ================= Output: Gantt =================
 st.markdown("### Timeline (per Equipment)")
 res = st.session_state.results
 if res is not None and not res.empty:
     bars = []
-    # Primary phase bars
     phases = [("Submittal","Submittal Start","Submittal End"),
               ("Manufacturing","Manufacturing Start","Manufacturing End"),
               ("Shipping","Shipping Start","Shipping End"),
-              ("Buffer","Buffer Start","Delivery Date")]  # use final Delivery for Buffer end marker
+              ("Buffer","Buffer Start","Delivery Date")]
+
+    # Current bars
     for _, r in res.iterrows():
         has_any = False
         for p, s, e in phases:
@@ -429,26 +554,40 @@ if res is not None and not res.empty:
             if pd.isna(s_val) or pd.isna(e_val):
                 continue
             has_any = True
-            bars.append({"Equipment": r["Equipment"], "Phase": p,
+            bars.append({"Series":"Current","Equipment": r["Equipment"], "Phase": p,
                          "Start": pd.to_datetime(s_val), "Finish": pd.to_datetime(e_val)})
-        # Always add ROJ milestone if provided. Give it a small width so it renders visibly.
         if pd.notna(r.get("ROJ")):
             roj_val = pd.to_datetime(r.get("ROJ"))
-            bars.append({"Equipment": r["Equipment"], "Phase": "ROJ",
+            bars.append({"Series":"Current","Equipment": r["Equipment"], "Phase": "ROJ",
                          "Start": roj_val, "Finish": roj_val + pd.Timedelta(days=1)})
-        # If no full phases and no ROJ, add a 1-day milestone so the equipment appears
         if not has_any and pd.isna(r.get("ROJ")):
-            # Prefer Delivery, then PO
             milestone = r.get("Delivery Date") or r.get("PO Execution")
             if pd.notna(milestone):
                 start = pd.to_datetime(milestone)
                 finish = start + pd.Timedelta(days=1)
-                bars.append({"Equipment": r["Equipment"], "Phase": "Milestone",
+                bars.append({"Series":"Current","Equipment": r["Equipment"], "Phase": "Milestone",
                              "Start": start, "Finish": finish})
+
+    # ====== NEW: Baseline ghost bars ===========================================
+    if not st.session_state.baseline.empty:
+        base = st.session_state.baseline
+        for _, r in base.iterrows():
+            for p, s, e in phases:
+                s_val, e_val = r.get(s), r.get(e)
+                if pd.isna(s_val) or pd.isna(e_val):
+                    continue
+                bars.append({"Series":"Baseline","Equipment": r["Equipment"], "Phase": p,
+                             "Start": pd.to_datetime(s_val), "Finish": pd.to_datetime(e_val)})
+            if pd.notna(r.get("ROJ")):
+                roj_val = pd.to_datetime(r.get("ROJ"))
+                bars.append({"Series":"Baseline","Equipment": r["Equipment"], "Phase": "ROJ",
+                             "Start": roj_val, "Finish": roj_val + pd.Timedelta(days=1)})
 
     if bars:
         gantt_df = pd.DataFrame(bars)
-        color_map = {
+
+        # Color map: Current vivid, Baseline ghosted (same hues lower alpha)
+        phase_colors = {
             "Submittal": colors.MANO_BLUE,
             "Manufacturing": colors.MANUFACTURING,
             "Shipping": colors.SHIPPING,
@@ -456,16 +595,42 @@ if res is not None and not res.empty:
             "ROJ": colors.MANO_GREY,
             "Milestone": colors.MANO_BLUE,
         }
+        # Build figure with Current
+        cur = gantt_df[gantt_df["Series"]=="Current"]
         fig = px.timeline(
-            gantt_df, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
+            cur, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
             category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer","ROJ","Milestone"]},
-            color_discrete_map=color_map,
+            color_discrete_map=phase_colors,
         )
         fig.update_yaxes(autorange="reversed")
-        fig.update_layout(height=520, margin=dict(l=20, r=20, t=20, b=20))
+
+        # Add Baseline as semi-transparent overlays
+        if "Baseline" in gantt_df["Series"].unique():
+            base_df = gantt_df[gantt_df["Series"]=="Baseline"]
+            if not base_df.empty:
+                base_fig = px.timeline(
+                    base_df, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
+                    category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer","ROJ","Milestone"]},
+                    color_discrete_map={
+                        "Submittal": colors.MANO_BLUE,
+                        "Manufacturing": colors.GHOST_NEUTRAL,
+                        "Shipping": colors.GHOST_NEUTRAL,
+                        "Buffer": colors.GHOST_NEUTRAL,
+                        "ROJ": colors.MANO_GREY,
+                        "Milestone": colors.MANO_GREY,
+                    },
+                )
+                for tr in base_fig.data:
+                    tr.name = f"Baseline {tr.name}"
+                    tr.opacity = 0.30
+                    fig.add_trace(tr)
+
+        fig.update_layout(
+            height=520,
+            margin=dict(l=20, r=20, t=20, b=20),
+            legend_title_text=""
+        )
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No timeline bars yet — click **Calculate** first.")
-
-
 
