@@ -557,7 +557,7 @@ else:
         show = _dates_to_date(st.session_state.results.copy())
         st.dataframe(show, use_container_width=True, hide_index=True)
         # ================= Buttons Baseline =================
-        c2, c3, _, c1 = st.columns([2,2,5,2], gap="small")
+        c2, c3, _, c1 = st.columns([2,2,4.5,3], gap="small")
         with c1: st.download_button("Download Results (CSV)", data=show.to_csv(index=False).encode("utf-8"),
                            file_name="procurement_pass_results.csv", mime="text/csv")
         renderBaselineButtons(c2, c3)
@@ -577,7 +577,7 @@ else:
                 display[c] = pd.to_datetime(display[c], errors="coerce").dt.date
         st.dataframe(display, use_container_width=True, hide_index=True)
         # ================= Buttons Baseline =================
-        c2, c3, _, c1 = st.columns([2,2,5,2], gap="small")
+        c2, c3, _, c1 = st.columns([2,2,4.5,3], gap="small")
         with c1:
           st.download_button("Download Compare (CSV)", data=comp.to_csv(index=False).encode("utf-8"),
                            file_name="procurement_baseline_compare.csv", mime="text/csv") 
