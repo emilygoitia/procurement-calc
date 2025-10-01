@@ -9,6 +9,7 @@ def inject_custom_css():
         --mano-blue: {colors.MANO_BLUE};
         --mano-offwhite: {colors.MANO_OFFWHITE};
         --mano-grey: {colors.MANO_GREY};
+        --mano-red: {colors.BUFFER};
         --border-radius: 0.5rem;
       }}
       html, body, [class*="css"]  {{ font-family: 'Raleway', sans-serif; }}
@@ -61,8 +62,8 @@ def inject_custom_css():
           margin-bottom: 1rem;
       }}
       [data-testid="stMarkdownContainer"] {{
-              display: flex;
-              flex-direction: column;
+        display: flex;
+        flex-direction: column;
       }}
       section[data-testid="stSidebar"] > div {{
         background: white;
@@ -71,6 +72,11 @@ def inject_custom_css():
       div[data-testid="stForm"] {{
         border: 0 !important;
         padding: 0 !important;
+      }}
+
+      div[data-testid="stForm"] .row-widget.stButton[data-testid="stFormSubmitButton"]:has([data-testid="baseButton-primaryFormSubmit"]) {{
+        display: flex;
+        justify-content: flex-end;
       }}
 
       .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {{
@@ -82,7 +88,8 @@ def inject_custom_css():
         justify-content: flex-end;
       }}
 
-      .stButton>button, .stDownloadButton>button {{
+      .stButton > button,
+      .stDownloadButton > button {{
         background: var(--mano-blue);
         color: white;
         border: 1px solid transparent;
@@ -90,7 +97,9 @@ def inject_custom_css():
         padding: .5rem 1rem;
         transition: background 0.3s, color 0.3s;
       }}
-      .stButton > button:hover, .stDownloadButton > button:hover {{
+
+      .stButton > button:hover,
+      .stDownloadButton > button:hover {{
         background: var(--mano-offwhite);
         color: var(--mano-blue);
         border-color: var(--mano-blue);
@@ -98,10 +107,39 @@ def inject_custom_css():
         padding: .5rem 1rem;
       }}
 
-      .stButton > button:focus:not(:active), .stDownloadButton > button:focus:not(:active) {{
+      .stButton > button:focus:not(:active),
+      .stDownloadButton > button:focus:not(:active) {{
         background: var(--mano-blue);
         color: var(--mano-offwhite);
       }}
+
+      .stButton > button[kind="secondaryFormSubmit"], .stButton > button[kind="secondaryFormSubmit"]:not(:active),
+      .stButton > button[kind="secondary"], .stButton > button[kind="secondary"]:not(:active) {{
+        background: var(--mano-red);
+        color: #fff;
+        border: 1px solid transparent;
+        border-radius: 12px;
+        padding: .5rem 1rem;
+        transition: background 0.3s, color 0.3s;
+      }}
+
+      .stButton > button[kind="secondaryFormSubmit"]:hover,
+      .stButton > button[kind="secondary"]:hover {{
+        background: var(--mano-offwhite);
+        color: var(--mano-red);
+        border-color: var(--mano-red);
+      }}
+
+      .stButton > button[kind="secondaryFormSubmit"]:disabled,
+      .stButton > button[kind="secondaryFormSubmit"]:disabled:hover,
+      .stButton > button[kind="secondary"]:disabled,
+       .stButton > button[kind="secondary"]:disabled:hover {{
+        border-color: rgba(36, 51, 59, 0.2);
+        background-color: transparent;
+        color: rgba(36, 51, 59, 0.4);
+        cursor: not-allowed;
+      }}
+      
 
       .dataframe tbody tr:nth-child(even) {{ background: #fff; }}
 

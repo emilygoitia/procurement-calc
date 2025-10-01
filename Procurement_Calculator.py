@@ -12,6 +12,7 @@ import utils.colors as colors
 # ---- Plotly guard ----
 try:
     import plotly.express as px
+    import plotly.graph_objects as go
 except ModuleNotFoundError:
     st.error("Plotly isn’t installed. Run: pip install streamlit pandas numpy plotly")
     st.stop()
@@ -353,66 +354,66 @@ if "baseline_meta" not in st.session_state:
     st.session_state.baseline_meta = {}
 
 # ================= Top buttons (Clear / Baseline) =================
-c1, c2, c3, _ = st.columns([1,1,1,5], gap="small")
-with c1:
-    if st.button("Clear All Inputs"):
-        df = st.session_state.work_df.copy()
-        for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
-            if c == "Mode" and c in df:
-                df[c] = ""
-            elif c in df:
-                df[c] = pd.NaT
-        for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
-            if c in df:
-                if c == "Manufacturing (days)":
-                    df[c] = 0
-                elif c == "Submittal (days)":
-                    df[c] = DEFAULT_SUBMITTAL_DAYS
-                elif c == "Shipping (days)":
-                    df[c] = DEFAULT_SHIPPING_DAYS
-                elif c == "Buffer (days)":
-                    df[c] = DEFAULT_BUFFER_DAYS
-        st.session_state.work_df = df
-        st.session_state.results = pd.DataFrame()
-        st.session_state.editor_nonce += 1
+# c2, c3, _ = st.columns([1,1,5], gap="small")
+# with c1:
+#     if st.button("Clear All Inputs"):
+#         df = st.session_state.work_df.copy()
+#         for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
+#             if c == "Mode" and c in df:
+#                 df[c] = ""
+#             elif c in df:
+#                 df[c] = pd.NaT
+#         for c in ["Submittal (days)","Manufacturing (days)","Shipping (days)","Buffer (days)"]:
+#             if c in df:
+#                 if c == "Manufacturing (days)":
+#                     df[c] = 0
+#                 elif c == "Submittal (days)":
+#                     df[c] = DEFAULT_SUBMITTAL_DAYS
+#                 elif c == "Shipping (days)":
+#                     df[c] = DEFAULT_SHIPPING_DAYS
+#                 elif c == "Buffer (days)":
+#                     df[c] = DEFAULT_BUFFER_DAYS
+#         st.session_state.work_df = df
+#         st.session_state.results = pd.DataFrame()
+#         st.session_state.editor_nonce += 1
 
 # ====== NEW: Baseline lock / reset =============================================
-with c2:
-    # Enable if there are results OR at least one row has a Mode set
-    has_modes = False
-    if isinstance(st.session_state.work_df, pd.DataFrame) and "Mode" in st.session_state.work_df.columns:
-        modes_series = st.session_state.work_df["Mode"].fillna("")
-        has_modes = modes_series.isin(["Forward", "Backward"]).any()
+# with c2:
+#     # Enable if there are results OR at least one row has a Mode set
+#     has_modes = False
+#     if isinstance(st.session_state.work_df, pd.DataFrame) and "Mode" in st.session_state.work_df.columns:
+#         modes_series = st.session_state.work_df["Mode"].fillna("")
+#         has_modes = modes_series.isin(["Forward", "Backward"]).any()
 
-    has_results = st.session_state.results is not None and not st.session_state.results.empty
-    lockable = has_results or has_modes
+#     has_results = st.session_state.results is not None and not st.session_state.results.empty
+#     lockable = has_results or has_modes
 
-    if st.button("Lock Baseline", disabled=not lockable):
-        # Ensure we lock the latest calc; if empty, compute on the fly
-        current = st.session_state.results
-        if current is None or current.empty:
-            current = compute_all(st.session_state.work_df, holiday_set)
+#     if st.button("Lock Baseline", disabled=not lockable):
+#         # Ensure we lock the latest calc; if empty, compute on the fly
+#         current = st.session_state.results
+#         if current is None or current.empty:
+#             current = compute_all(st.session_state.work_df, holiday_set)
 
-        base = current.copy()
-        for c in [
-            "PO Execution","Submittal Start","Submittal End",
-            "Manufacturing Start","Manufacturing End",
-            "Shipping Start","Shipping End",
-            "Buffer Start","Delivery Date","ROJ","Delivery Date (committed)"
-        ]:
-            if c in base.columns:
-                base[c] = pd.to_datetime(base[c], errors="coerce")
+#         base = current.copy()
+#         for c in [
+#             "PO Execution","Submittal Start","Submittal End",
+#             "Manufacturing Start","Manufacturing End",
+#             "Shipping Start","Shipping End",
+#             "Buffer Start","Delivery Date","ROJ","Delivery Date (committed)"
+#         ]:
+#             if c in base.columns:
+#                 base[c] = pd.to_datetime(base[c], errors="coerce")
 
-        st.session_state.baseline = base
-        st.session_state.baseline_meta = {
-            "locked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "calendar": calendar_choice,
-        }
+#         st.session_state.baseline = base
+#         st.session_state.baseline_meta = {
+#             "locked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+#             "calendar": calendar_choice,
+#         }
 
-with c3:
-    if st.button("Reset Baseline", disabled=st.session_state.baseline.empty):
-        st.session_state.baseline = pd.DataFrame()
-        st.session_state.baseline_meta = {}
+# with c3:
+#     if st.button("Reset Baseline", disabled=st.session_state.baseline.empty):
+#         st.session_state.baseline = pd.DataFrame()
+#         st.session_state.baseline_meta = {}
 
 # ================= Data Editor (FORM; Calculate-only) =================
 
@@ -458,17 +459,17 @@ with st.form("grid_form", clear_on_submit=False):
             "Delivery Date (committed)": st.column_config.DateColumn("Delivery Date (committed)"),
         },
     )
+    # calc_clicked = st.form_submit_button("Calculate", type="primary")
     col1, col2 = st.columns([1, 1])
     with col2:
         calc_clicked = st.form_submit_button("Calculate", type="primary")
     with col1:
-        reset = st.form_submit_button("Reset", type="secondary")
+        reset = st.form_submit_button("Clear All Inputs", type="secondary")
 
 if calc_clicked:
     st.session_state.work_df = edited_df.copy()
     st.session_state.results = compute_all(st.session_state.work_df, holiday_set)
 
-#TODO: handle RESET w/ DEFAULTS
 if reset:
     df = st.session_state.work_df.copy()
     for c in ["Mode","ROJ","PO Execution","Delivery Date (committed)"]:
@@ -494,6 +495,45 @@ if reset:
 # ================= Output: Table =================
 st.markdown("### Calculated Dates")
 
+def renderBaselineButtons(c2, c3):
+  # ====== NEW: Baseline lock / reset =============================================
+  with c2:
+      # Enable if there are results OR at least one row has a Mode set
+      has_modes = False
+      if isinstance(st.session_state.work_df, pd.DataFrame) and "Mode" in st.session_state.work_df.columns:
+          modes_series = st.session_state.work_df["Mode"].fillna("")
+          has_modes = modes_series.isin(["Forward", "Backward"]).any()
+
+      has_results = st.session_state.results is not None and not st.session_state.results.empty
+      lockable = has_results or has_modes
+
+      if st.button("Lock Baseline", disabled=not lockable, type="primary"):
+          # Ensure we lock the latest calc; if empty, compute on the fly
+          current = st.session_state.results
+          if current is None or current.empty:
+              current = compute_all(st.session_state.work_df, holiday_set)
+
+          base = current.copy()
+          for c in [
+              "PO Execution","Submittal Start","Submittal End",
+              "Manufacturing Start","Manufacturing End",
+              "Shipping Start","Shipping End",
+              "Buffer Start","Delivery Date","ROJ","Delivery Date (committed)"
+          ]:
+              if c in base.columns:
+                  base[c] = pd.to_datetime(base[c], errors="coerce")
+
+          st.session_state.baseline = base
+          st.session_state.baseline_meta = {
+              "locked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+              "calendar": calendar_choice,
+          }
+
+  with c3:
+      if st.button("Reset Baseline", disabled=st.session_state.baseline.empty, type="secondary"):
+          st.session_state.baseline = pd.DataFrame()
+          st.session_state.baseline_meta = {} 
+
 if st.session_state.results is None or st.session_state.results.empty:
     st.info("Fill the table, then click **Calculate**.")
 else:
@@ -516,8 +556,11 @@ else:
     if view == "Current":
         show = _dates_to_date(st.session_state.results.copy())
         st.dataframe(show, use_container_width=True, hide_index=True)
-        st.download_button("Download Results (CSV)", data=show.to_csv(index=False).encode("utf-8"),
+        # ================= Buttons Baseline =================
+        c2, c3, _, c1 = st.columns([2,2,5,2], gap="small")
+        with c1: st.download_button("Download Results (CSV)", data=show.to_csv(index=False).encode("utf-8"),
                            file_name="procurement_pass_results.csv", mime="text/csv")
+        renderBaselineButtons(c2, c3)
     else:
         comp = compare_to_baseline(st.session_state.results, st.session_state.baseline, holiday_set)
         # Show deltas with simple emoji cues
@@ -533,8 +576,12 @@ else:
                 # try converting
                 display[c] = pd.to_datetime(display[c], errors="coerce").dt.date
         st.dataframe(display, use_container_width=True, hide_index=True)
-        st.download_button("Download Compare (CSV)", data=comp.to_csv(index=False).encode("utf-8"),
-                           file_name="procurement_baseline_compare.csv", mime="text/csv")
+        # ================= Buttons Baseline =================
+        c2, c3, _, c1 = st.columns([2,2,5,2], gap="small")
+        with c1:
+          st.download_button("Download Compare (CSV)", data=comp.to_csv(index=False).encode("utf-8"),
+                           file_name="procurement_baseline_compare.csv", mime="text/csv") 
+        renderBaselineButtons(c2, c3)
 
 # ================= Output: Gantt =================
 st.markdown("### Timeline (per Equipment)")
@@ -595,40 +642,85 @@ if res is not None and not res.empty:
             "ROJ": colors.MANO_GREY,
             "Milestone": colors.MANO_BLUE,
         }
-        # Build figure with Current
-        cur = gantt_df[gantt_df["Series"]=="Current"]
+
+        # Add combined Y axis label = Equipment + Series
+        gantt_df["Equip"] = gantt_df["Equipment"] + " - " + gantt_df["Series"]
+
+        # Order so Current is always above Baseline
+        ordered_y = []
+        for eq in gantt_df["Equipment"].unique():
+          ordered_y.append(f"{eq} - Current")
+          if f"{eq} - Baseline" in gantt_df["Equip"].values:
+              ordered_y.append(f"{eq} - Baseline")
+        
+        # --- Current ---
+        cur_df = gantt_df[gantt_df["Series"] == "Current"]
         fig = px.timeline(
-            cur, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
-            category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer","ROJ","Milestone"]},
+            cur_df,
+            x_start="Start",
+            x_end="Finish",
+            y="Equip",
+            color="Phase",
+            category_orders={
+              "Phase": ["Submittal","Manufacturing","Shipping","Buffer","ROJ","Milestone"],
+              "Equip": ordered_y,
+            },
             color_discrete_map=phase_colors,
         )
-        fig.update_yaxes(autorange="reversed")
 
-        # Add Baseline as semi-transparent overlays
-        if "Baseline" in gantt_df["Series"].unique():
-            base_df = gantt_df[gantt_df["Series"]=="Baseline"]
-            if not base_df.empty:
-                base_fig = px.timeline(
-                    base_df, x_start="Start", x_end="Finish", y="Equipment", color="Phase",
-                    category_orders={"Phase":["Submittal","Manufacturing","Shipping","Buffer","ROJ","Milestone"]},
-                    color_discrete_map={
-                        "Submittal": colors.MANO_BLUE,
-                        "Manufacturing": colors.GHOST_NEUTRAL,
-                        "Shipping": colors.GHOST_NEUTRAL,
-                        "Buffer": colors.GHOST_NEUTRAL,
-                        "ROJ": colors.MANO_GREY,
-                        "Milestone": colors.MANO_GREY,
-                    },
-                )
-                for tr in base_fig.data:
-                    tr.name = f"Baseline {tr.name}"
-                    tr.opacity = 0.30
-                    fig.add_trace(tr)
+        # --- Baseline ---
+        base_df = gantt_df[gantt_df["Series"] == "Baseline"]
+        if not base_df.empty:
+          base_fig = px.timeline(
+            base_df,
+            x_start="Start",
+            x_end="Finish",
+            y="Equip",
+            color="Phase",
+            category_orders={
+              "Phase": ["Submittal","Manufacturing","Shipping","Buffer","ROJ","Milestone"],
+              "Equip": ordered_y,
+            },
+            color_discrete_map=phase_colors,
+          )
+          for tr in base_fig.data:
+            tr.opacity = 0.25       # 👈 ghosted baseline
+            tr.showlegend = False   # avoid duplicate legend
+            tr.width = 0.5
+            fig.add_trace(tr)
+
+        tick_map = {}
+        for eq in gantt_df["Equipment"].unique():
+          tick_map[f"{eq} - Current"] = eq        # show just equipment name
+          tick_map[f"{eq} - Baseline"] = ""  # indented baseline
+
+        # Axes + layout
+        fig.update_xaxes(
+          showgrid=True,
+          gridcolor="lightgray",
+          linewidth=1,
+          linecolor=colors.MANO_BLUE,
+          title="Timeline"
+        )
+        fig.update_yaxes(
+          showgrid=True,
+          autorange="reversed",
+          tickmode="array",
+          tickvals=list(tick_map.keys()),   # real values
+          ticktext=list(tick_map.values()), # what gets shown,
+          categoryorder="array",
+          categoryarray=ordered_y,
+          linewidth=1,
+          linecolor=colors.MANO_BLUE,
+          title="Equipment"
+        )
 
         fig.update_layout(
             height=520,
             margin=dict(l=20, r=20, t=20, b=20),
-            legend_title_text=""
+            legend_title_text="",
+            plot_bgcolor="#FFFFFF",
+            paper_bgcolor=colors.MANO_OFFWHITE
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
