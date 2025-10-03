@@ -571,9 +571,16 @@ else:
         for c in [col for col in display.columns if col.startswith("Δ ")]:
             display[c] = display[c].apply(lambda v: f"{delta_icon(v)} {v} bd" if pd.notna(v) else "")
         # Dates to date
+        date_like_cols = {
+            "Base: PO Execution","Base: Submittal End","Base: Manufacturing End",
+            "Base: Shipping End","Base: Delivery Date","Base: ROJ",
+            "Base: Delivery Date (committed)",
+            "New: PO Execution","New: Submittal End","New: Manufacturing End",
+            "New: Shipping End","New: Delivery Date","New: ROJ",
+            "New: Delivery Date (committed)",
+        }
         for c in display.columns:
-            if any(x in c for x in ["Base: ","New: "]):
-                # try converting
+            if c in date_like_cols:
                 display[c] = pd.to_datetime(display[c], errors="coerce").dt.date
         st.dataframe(display, use_container_width=True, hide_index=True)
         # ================= Buttons Baseline =================
