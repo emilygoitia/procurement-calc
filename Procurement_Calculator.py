@@ -310,16 +310,18 @@ def compare_to_baseline(current: pd.DataFrame, baseline: pd.DataFrame, holiday_s
 
 # ================= Title & Notes =================
 st.title("Procurement Calculator")
-st.subheader("Assumptions & Notes")
-st.write(
-    """
+with st.expander("Assumptions & Notes", expanded=True):
+    st.markdown(
+        """
 <div class="small-muted mb-2">
 <b>Assumptions:</b> Business-day math (Mon–Fri). Choose a single holiday preset.<br>
 <b>Per-row Mode:</b> Forward = compute from PO; Backward = compute PO from ROJ.<br>
 <b>Committed Delivery:</b> If present, leave <i>Manufacturing (days)</i> blank and we’ll derive it.<br>
 <b>Backward PO cap:</b> If calculated PO lands before today, we cap it at today (manual past POs are allowed in Forward).<br>
 </div>
-""", unsafe_allow_html=True)
+""".strip(),
+        unsafe_allow_html=True,
+    )
 
 # ================= Sidebar: Holiday presets =================
 with st.sidebar:
