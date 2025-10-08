@@ -354,6 +354,8 @@ if "baseline" not in st.session_state:
     st.session_state.baseline = pd.DataFrame()
 if "baseline_meta" not in st.session_state:
     st.session_state.baseline_meta = {}
+if "baseline_notice" not in st.session_state:
+    st.session_state.baseline_notice = None
 
 # ================= Top buttons (Clear / Baseline) =================
 # c2, c3, _ = st.columns([1,1,5], gap="small")
@@ -497,7 +499,7 @@ if reset:
 # ================= Output: Table =================
 st.markdown("### Calculated Dates")
 
-def renderBaselineButtons(c2, c3):
+def renderBaselineButtons(c2, c3, c4):
   # ====== NEW: Baseline lock / reset =============================================
   with c2:
       # Enable if there are results OR at least one row has a Mode set
@@ -532,9 +534,18 @@ def renderBaselineButtons(c2, c3):
           }
 
   with c3:
+      can_adopt = (st.session_state.results is not None and not st.session_state.results.empty and
+                   not st.session_state.baseline.empty)
+      if st.button("Adopt Scenario", disabled=not can_adopt, type="primary"):
+          st.session_state.baseline = pd.DataFrame()
+          st.session_state.baseline_meta = {}
+          st.session_state.baseline_notice = "New scenario adopted. Baseline cleared."
+
+  with c4:
       if st.button("Reset Baseline", disabled=st.session_state.baseline.empty, type="secondary"):
           st.session_state.baseline = pd.DataFrame()
-          st.session_state.baseline_meta = {} 
+          st.session_state.baseline_meta = {}
+          st.session_state.baseline_notice = "Baseline cleared."
 
 if st.session_state.results is None or st.session_state.results.empty:
     st.info("Fill the table, then click **Calculate**.")
@@ -546,6 +557,11 @@ else:
         blurb = f" (baseline {meta.get('locked_at','')} – {meta.get('calendar','')})"
         view = st.radio("View", ["Current","Compare to Baseline"], horizontal=True, index=0, help="Lock a baseline, then compare.")
         st.caption(f"Baseline locked{blurb}")
+
+    notice = st.session_state.get("baseline_notice")
+    if notice:
+        st.success(notice)
+        st.session_state.baseline_notice = None
 
     # Format helper
     def _dates_to_date(df):
@@ -559,10 +575,10 @@ else:
         show = _dates_to_date(st.session_state.results.copy())
         st.dataframe(show, use_container_width=True, hide_index=True)
         # ================= Buttons Baseline =================
-        c2, c3, _, c1 = st.columns([2,2,4.5,3], gap="small")
+        c2, c3, c4, _, c1 = st.columns([2,2,2,4,3], gap="small")
         with c1: st.download_button("Download Results (CSV)", data=show.to_csv(index=False).encode("utf-8"),
                            file_name="procurement_pass_results.csv", mime="text/csv")
-        renderBaselineButtons(c2, c3)
+        renderBaselineButtons(c2, c3, c4)
     else:
         comp = compare_to_baseline(st.session_state.results, st.session_state.baseline, holiday_set)
         # Show deltas with simple emoji cues
@@ -586,11 +602,11 @@ else:
                 display[c] = pd.to_datetime(display[c], errors="coerce").dt.date
         st.dataframe(display, use_container_width=True, hide_index=True)
         # ================= Buttons Baseline =================
-        c2, c3, _, c1 = st.columns([2,2,4.5,3], gap="small")
+        c2, c3, c4, _, c1 = st.columns([2,2,2,4,3], gap="small")
         with c1:
           st.download_button("Download Compare (CSV)", data=comp.to_csv(index=False).encode("utf-8"),
-                           file_name="procurement_baseline_compare.csv", mime="text/csv") 
-        renderBaselineButtons(c2, c3)
+                           file_name="procurement_baseline_compare.csv", mime="text/csv")
+        renderBaselineButtons(c2, c3, c4)
 
 # ================= Output: Gantt =================
 st.markdown("### Timeline (per Equipment)")
