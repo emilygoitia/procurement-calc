@@ -136,7 +136,17 @@ def compute_all(df: pd.DataFrame, holiday_set) -> pd.DataFrame:
         buf = as_int(row.get("Buffer (days)"), DEFAULT_BUFFER_DAYS)
 
         # Derive Manufacturing (days) if committed delivery is present (Forward)
-        if mode == "Forward" and pd.notna(committed_delivery) and (pd.isna(mfg) or mfg == "") and pd.notna(po):
+        def _needs_mfg_calc(val):
+            if pd.isna(val):
+                return True
+            if isinstance(val, str) and val.strip() == "":
+                return True
+            try:
+                return float(val) == 0.0
+            except Exception:
+                return False
+
+        if mode == "Forward" and pd.notna(committed_delivery) and _needs_mfg_calc(mfg) and pd.notna(po):
             mfg_end = bday_sub(committed_delivery, buf, holiday_set)
             mfg_end = bday_sub(mfg_end, ship, holiday_set)
             sub_end = bday_add(po, sub, holiday_set)
